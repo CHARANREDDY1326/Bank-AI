@@ -1,0 +1,11 @@
+boto3
+langchain
+langchain-community
+openai-whisper
+ffmpeg
+ipykernel
+notebook
+python-dotenv
+fastapi
+uvicorn
+aiortc
