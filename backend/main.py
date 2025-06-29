@@ -10,6 +10,9 @@ import secrets
 import json
 import logging
 import os
+import asyncio
+from typing import Dict, List
+import uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,6 +57,9 @@ fake_customers_db = {}
 email_verification_codes = {}
 active_connections = {}
 audio_storage = {}
+
+audio_sessions: Dict[str, Dict] = {}
+audio_chunks: Dict[str, List] = {}
 
 class UserLogin(BaseModel):
     username: str
@@ -331,14 +337,203 @@ def root():
     return {
         "message": "BankAI WebRTC Server",
         "version": "1.0.0",
-        "services": ["auth", "webrtc", "audio"],
+        "services": ["auth", "webrtc", "audio", "audio-streaming"],
         "stats": {
             "connections": len(active_connections),
             "agents": len(fake_agents_db),
             "customers": len(fake_customers_db),
-            "audio_files": len(audio_storage)
+            "audio_files": len(audio_storage),
+            "audio_sessions": len(audio_sessions)
         }
     }
+audio_sessions: Dict[str, Dict] = {}
+audio_chunks: Dict[str, List] = {}
+
+# Add these endpoints
+@app.post("/audio-stream/start/{session_id}")
+async def start_audio_session(
+    session_id: str,
+    token_data = Depends(verify_token)
+):
+    username = token_data.get("sub")
+    role = token_data.get("role")
+    
+    if role != "customer":
+        raise HTTPException(status_code=403, detail="Only customers can stream audio")
+    
+    audio_sessions[session_id] = {
+        "customer_id": username,
+        "started_at": datetime.utcnow(),
+        "chunk_count": 0,
+        "total_bytes": 0
+    }
+    audio_chunks[session_id] = []
+    
+    logger.info(f"🎙️ Audio session started: {session_id} by {username}")
+    return {"session_id": session_id, "status": "started"}
+
+@app.post("/audio-stream/upload/{session_id}")
+async def upload_audio_chunk(
+    session_id: str,
+    audio_chunk: UploadFile = File(...),
+    chunk_index: int = 0,  # This will come from query params now
+    token_data = Depends(verify_token)
+):
+    if session_id not in audio_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    username = token_data.get("sub")
+    if audio_sessions[session_id]["customer_id"] != username:
+        raise HTTPException(status_code=403, detail="Not your session")
+    
+    chunk_data = await audio_chunk.read()
+    
+    # Store chunk with proper index
+    audio_chunks[session_id].append({
+        "index": chunk_index,
+        "data": chunk_data,
+        "timestamp": datetime.utcnow(),
+        "size": len(chunk_data)
+    })
+    
+    # Update session stats
+    audio_sessions[session_id]["chunk_count"] += 1
+    audio_sessions[session_id]["total_bytes"] += len(chunk_data)
+    
+    logger.info(f"📤 Audio chunk {chunk_index} uploaded for session {session_id}: {len(chunk_data)} bytes")
+    
+    return {
+        "chunk_index": chunk_index,
+        "size": len(chunk_data),
+        "session_chunks": audio_sessions[session_id]["chunk_count"]
+    }
+@app.get("/audio-stream/download/{session_id}")
+async def download_session_audio(session_id: str):
+    if session_id not in audio_chunks:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Combine all chunks
+    all_chunks = sorted(audio_chunks[session_id], key=lambda x: x["index"])
+    combined_data = b"".join([chunk["data"] for chunk in all_chunks])
+    
+    # Save combined file
+    os.makedirs("sessions", exist_ok=True)
+    file_path = f"sessions/{session_id}_complete.webm"
+    with open(file_path, "wb") as f:
+        f.write(combined_data)
+    
+    return FileResponse(path=file_path, filename=f"session_{session_id}.webm")
+
+@app.get("/audio-stream/sessions")
+async def list_audio_sessions(token_data = Depends(verify_token)):
+    """List all audio sessions for debugging"""
+    return {
+        "sessions": list(audio_sessions.keys()),
+        "session_details": audio_sessions
+    }
+
+
+# Update the save-local endpoint to use your existing audio_files folder
+@app.post("/audio-stream/save-local/{session_id}")
+async def save_session_to_local(
+    session_id: str,
+    token_data = Depends(verify_token)
+):
+    if session_id not in audio_chunks:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if session_id not in audio_sessions:
+        raise HTTPException(status_code=404, detail="Session metadata not found")
+    
+    # Get session info
+    session_info = audio_sessions[session_id]
+    chunks = audio_chunks[session_id]
+    
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No audio chunks found")
+    
+    # Sort chunks by index to ensure proper order
+    sorted_chunks = sorted(chunks, key=lambda x: x["index"])
+    
+    # Combine all chunks
+    combined_data = b"".join([chunk["data"] for chunk in sorted_chunks])
+    
+    # Use your existing audio_files directory
+    audio_dir = "audio_files"
+    os.makedirs(audio_dir, exist_ok=True)
+    
+    # Create filename with timestamp and customer info
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    customer_id = session_info["customer_id"]
+    filename = f"customer_{customer_id}_{session_id}_{timestamp}.webm"
+    file_path = f"{audio_dir}/{filename}"
+    
+    # Save to local file in audio_files folder
+    with open(file_path, "wb") as f:
+        f.write(combined_data)
+    
+    # Get file size
+    file_size = os.path.getsize(file_path)
+    
+    logger.info(f"💾 Audio session saved to audio_files: {file_path} ({file_size} bytes)")
+    
+    return {
+        "session_id": session_id,
+        "filename": filename,
+        "file_path": file_path,
+        "file_size": file_size,
+        "total_chunks": len(sorted_chunks),
+        "duration_estimate": f"{len(sorted_chunks)} seconds",
+        "customer_id": customer_id,
+        "saved_at": datetime.utcnow().isoformat()
+    }
+# Update the list files endpoint to use audio_files folder
+@app.get("/audio-stream/local-files")
+async def list_local_audio_files(token_data = Depends(verify_token)):
+    """List all audio files in the audio_files directory"""
+    audio_dir = "audio_files"
+    if not os.path.exists(audio_dir):
+        return {"files": [], "count": 0}
+    
+    files = []
+    for filename in os.listdir(audio_dir):
+        if filename.endswith(('.webm', '.wav', '.mp3', '.mp4')):  # Include various audio formats
+            file_path = os.path.join(audio_dir, filename)
+            file_stat = os.stat(file_path)
+            files.append({
+                "filename": filename,
+                "size": file_stat.st_size,
+                "created": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                "modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                "path": file_path
+            })
+    
+    # Sort by creation time (newest first)
+    files.sort(key=lambda x: x["created"], reverse=True)
+    
+    return {
+        "files": files,
+        "count": len(files),
+        "total_size": sum(f["size"] for f in files),
+        "directory": audio_dir
+    }
+
+# Add endpoint to download files from audio_files directory
+@app.get("/audio-stream/download-local/{filename}")
+async def download_local_audio_file(filename: str, token_data = Depends(verify_token)):
+    """Download a specific file from audio_files directory"""
+    audio_dir = "audio_files"
+    file_path = os.path.join(audio_dir, filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Security check - ensure the file is within audio_files directory
+    if not os.path.abspath(file_path).startswith(os.path.abspath(audio_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return FileResponse(path=file_path, filename=filename)
+
 
 @app.get("/health")
 def health_check():

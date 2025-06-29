@@ -22,13 +22,23 @@ const getInitialState = () => {
 };
 
 const initialState = getInitialState();
-  const [step, setStep] = useState('signup');
-  const [formData, setFormData] = useState({ email: '', name: '', code: '' });
+  const [step, setStep] = useState(initialState.step);
+  const [formData, setFormData] = useState(initialState.formData);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [success, setSuccess] = useState(initialState.success);
   const { login, loading, setLoading } = useAuth();
   
   console.log('🏗️ CustomerAuth component rendering/mounting');
+  console.log('🔍 Current step state:', step);
+  console.log('🔍 Current formData state:', formData);
+
+  // Component lifecycle debugging
+  useEffect(() => {
+    console.log('🚀 CustomerAuth component mounted');
+    return () => {
+      console.log('🛑 CustomerAuth component unmounting');
+    };
+  }, []);
 
   // Replace the getApiUrl function with:
   const getApiUrl = () => {
@@ -41,22 +51,20 @@ const initialState = getInitialState();
 
   const isLocalhost = window.location.hostname === 'localhost';
 
-  // ADD THIS - Persist state across re-mounts
-  useEffect(() => {
-    const saved = localStorage.getItem('customerAuthState');
-    if (saved) {
-      const { step: savedStep, formData: savedFormData, success: savedSuccess } = JSON.parse(saved);
-      if (savedStep) setStep(savedStep);
-      if (savedFormData) setFormData(savedFormData);
-      if (savedSuccess) setSuccess(savedSuccess);
-    }
-  }, []);
-
+  // Persist state changes to localStorage
   useEffect(() => {
     localStorage.setItem('customerAuthState', JSON.stringify({ step, formData, success }));
   }, [step, formData, success]);
 
+  // Debug step changes
+  useEffect(() => {
+    console.log('🔄 Step changed to:', step);
+  }, [step]);
+
   const handleSignup = async () => {
+    console.log('🎯 handleSignup called');
+    console.log('🔍 Current formData:', formData);
+    
     if (!formData.email || !formData.name) {
       setError('Please fill in all fields');
       return;
@@ -93,12 +101,14 @@ const initialState = getInitialState();
       if (response.ok) {
         console.log('✅ Customer signup successful');
         console.log('🔄 About to set success message and step');
+        console.log('🔍 Current step before update:', step);
 
         setSuccess(`Verification code sent to ${formData.email}! Check your terminal for the code.`);
         
         console.log('🔄 About to call setStep(verify)');
         setStep('verify');
         console.log('🔄 setStep(verify) called');
+        console.log('🔍 Step should now be "verify"');
 
       } else {
         console.log('❌ Response not OK, status:', response.status);
@@ -286,6 +296,33 @@ const initialState = getInitialState();
                   'Send Verification Code'
                 )}
               </button>
+
+              {/* Temporary debug button */}
+              <button
+                onClick={() => {
+                  console.log('🔧 Debug: Manually setting step to verify');
+                  setStep('verify');
+                  setSuccess('Debug: Manual step change');
+                }}
+                className="w-full bg-yellow-500 text-white py-2 rounded-lg text-sm mt-2"
+              >
+                Debug: Force Step to Verify
+              </button>
+
+              {/* Clear localStorage debug button */}
+              <button
+                onClick={() => {
+                  console.log('🧹 Debug: Clearing localStorage');
+                  localStorage.removeItem('customerAuthState');
+                  setStep('signup');
+                  setFormData({ email: '', name: '', code: '' });
+                  setSuccess('');
+                  setError('');
+                }}
+                className="w-full bg-red-500 text-white py-2 rounded-lg text-sm mt-2"
+              >
+                Debug: Clear localStorage
+              </button>
             </div>
           </div>
         ) : (
@@ -354,6 +391,15 @@ const initialState = getInitialState();
                 ✅ Connected to EC2 instance
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Debug Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+          <div className="text-xs text-blue-600">
+            <div className="font-medium">Debug Info:</div>
+            <div>Current Step: <span className="font-mono">{step}</span></div>
+            <div>localStorage: <span className="font-mono break-all">{localStorage.getItem('customerAuthState') || 'null'}</span></div>
           </div>
         </div>
 
