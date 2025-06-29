@@ -10,11 +10,19 @@ const getSignalingServerUrl = (token) => {
   // Your FIXED Elastic IP hostname for WebSocket
   return `wss://ec2-44-196-69-226.compute-1.amazonaws.com/ws/signaling/${token}`;
 };
+
+// Enhanced ICE servers for better EC2 connectivity
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ],
+  iceCandidatePoolSize: 10
 };
 
 const useAuthenticatedWebRTC = (isInitiator = false) => {
@@ -349,27 +357,53 @@ const useAuthenticatedWebRTC = (isInitiator = false) => {
       peerConnection.current.addTrack(track, stream);
     });
 
-    // Handle incoming remote tracks (from old code)
+    // FIXED: Enhanced remote track handling for EC2
     peerConnection.current.ontrack = (event) => {
       console.log('📻 Received remote track:', event.track.kind, 'readyState:', event.track.readyState);
       
       const [remoteStream] = event.streams;
       if (remoteStream) {
-        // Replace the remote stream reference completely (from old code)
         remoteStreamRef.current = remoteStream;
 
-        // Setup remote audio element (from old code)
+        // Remove any existing audio element
         let remoteAudio = document.getElementById('remote-audio');
         if (remoteAudio) remoteAudio.remove();
         
+        // Create new audio element with enhanced settings for EC2
         remoteAudio = document.createElement('audio');
         remoteAudio.id = 'remote-audio';
         remoteAudio.autoplay = true;
         remoteAudio.volume = 1.0;
+        remoteAudio.controls = false;
+        remoteAudio.muted = false;
+        
+        // Important: Set these properties for better audio on EC2
+        remoteAudio.setAttribute('playsinline', '');
+        remoteAudio.setAttribute('webkit-playsinline', '');
+        
         document.body.appendChild(remoteAudio);
+        
+        // Set source and handle autoplay issues
         remoteAudio.srcObject = remoteStream;
         
+        // Force play after user interaction for EC2 deployment
+        remoteAudio.play().catch(e => {
+          console.log('Audio autoplay blocked, will play on user interaction');
+          // Add click listener to play audio
+          const playAudio = () => {
+            remoteAudio.play().catch(console.error);
+            document.removeEventListener('click', playAudio);
+            document.removeEventListener('touchstart', playAudio);
+          };
+          document.addEventListener('click', playAudio);
+          document.addEventListener('touchstart', playAudio);
+        });
+        
         console.log('✅ Remote audio setup complete, tracks:', remoteStream.getAudioTracks().length);
+        
+        // Expose to window for debugging
+        window.remoteAudio = remoteAudio;
+        window.remoteStream = remoteStream;
       }
     };
 
@@ -386,7 +420,7 @@ const useAuthenticatedWebRTC = (isInitiator = false) => {
       }
     };
 
-    // Connection state monitoring (from old code)
+    // FIXED: Enhanced connection state monitoring for EC2
     peerConnection.current.onconnectionstatechange = () => {
       const state = peerConnection.current.connectionState;
       console.log('🔗 Peer connection state:', state, 'for', userRole);
@@ -399,9 +433,20 @@ const useAuthenticatedWebRTC = (isInitiator = false) => {
       }
     };
 
+    // FIXED: Enhanced ICE connection monitoring for EC2 stability
     peerConnection.current.oniceconnectionstatechange = () => {
       const state = peerConnection.current.iceConnectionState;
       console.log('🧊 ICE connection state:', state, 'for', userRole);
+      
+      if (state === 'disconnected' || state === 'failed') {
+        console.log('🔄 ICE connection failed, restarting...');
+        setTimeout(() => {
+          if (peerConnection.current && peerConnection.current.iceConnectionState !== 'connected') {
+            console.log('🔄 Executing ICE restart');
+            peerConnection.current.restartIce();
+          }
+        }, 1000);
+      }
     };
 
     peerConnection.current.onsignalingstatechange = () => {
@@ -472,6 +517,9 @@ const useAuthenticatedWebRTC = (isInitiator = false) => {
         makingOffer.current = false;
       }
     };
+
+    // Expose to window for debugging
+    window.peerConnection = peerConnection.current;
   }, [userRole, sendSignal]);
 
   // Message handling from old code with backend awareness
