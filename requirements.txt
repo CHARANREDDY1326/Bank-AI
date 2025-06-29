@@ -9,3 +9,9 @@ python-dotenv
 fastapi
 uvicorn
 aiortc
+langchain_groq
+pypdf
+langchain_chroma
+langchain_aws
+streamlit
+redis
