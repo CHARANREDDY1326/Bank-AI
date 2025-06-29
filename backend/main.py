@@ -346,8 +346,7 @@ def root():
             "audio_sessions": len(audio_sessions)
         }
     }
-audio_sessions: Dict[str, Dict] = {}
-audio_chunks: Dict[str, List] = {}
+
 
 # Add these endpoints
 @app.post("/audio-stream/start/{session_id}")
