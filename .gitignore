@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+venv/
+env/
+*.sqlite3
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+build/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+# Docker
+*.pid
+
+# Nginx SSL keys (never commit real keys!)
+*.crt
+*.key
+
+# VSCode
+.vscode/
+
+# Misc
+*.swp
+*.swo 
