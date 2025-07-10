@@ -13,7 +13,9 @@ import os
 import asyncio
 from typing import Dict, List
 import uuid
+from live_transcriber import stream_to_transcribe
 
+audio_stream_queues = {}
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -347,8 +349,6 @@ def root():
         }
     }
 
-
-# Add these endpoints
 @app.post("/audio-stream/start/{session_id}")
 async def start_audio_session(
     session_id: str,
@@ -360,6 +360,14 @@ async def start_audio_session(
     if role != "customer":
         raise HTTPException(status_code=403, detail="Only customers can stream audio")
     
+    if session_id in audio_stream_queues:
+        raise HTTPException(status_code=400, detail="Session already exists")
+    
+    queue = asyncio.Queue()
+    audio_stream_queues[session_id] = queue
+    os.makedirs("transcripts", exist_ok=True)
+    asyncio.create_task(stream_to_transcribe(session_id, queue))
+    
     audio_sessions[session_id] = {
         "customer_id": username,
         "started_at": datetime.utcnow(),
@@ -369,13 +377,13 @@ async def start_audio_session(
     audio_chunks[session_id] = []
     
     logger.info(f"🎙️ Audio session started: {session_id} by {username}")
-    return {"session_id": session_id, "status": "started"}
+    return {"session_id": session_id, "status": "streaming"}
 
 @app.post("/audio-stream/upload/{session_id}")
 async def upload_audio_chunk(
     session_id: str,
     audio_chunk: UploadFile = File(...),
-    chunk_index: int = 0,  # This will come from query params now
+    chunk_index: int = 0,
     token_data = Depends(verify_token)
 ):
     if session_id not in audio_sessions:
@@ -386,6 +394,10 @@ async def upload_audio_chunk(
         raise HTTPException(status_code=403, detail="Not your session")
     
     chunk_data = await audio_chunk.read()
+    
+    # Feed transcription queue
+    if session_id in audio_stream_queues:
+        await audio_stream_queues[session_id].put(chunk_data)
     
     # Store chunk with proper index
     audio_chunks[session_id].append({
@@ -406,6 +418,7 @@ async def upload_audio_chunk(
         "size": len(chunk_data),
         "session_chunks": audio_sessions[session_id]["chunk_count"]
     }
+
 @app.get("/audio-stream/download/{session_id}")
 async def download_session_audio(session_id: str):
     if session_id not in audio_chunks:
@@ -431,8 +444,6 @@ async def list_audio_sessions(token_data = Depends(verify_token)):
         "session_details": audio_sessions
     }
 
-
-# Update the save-local endpoint to use your existing audio_files folder
 @app.post("/audio-stream/save-local/{session_id}")
 async def save_session_to_local(
     session_id: str,
@@ -486,7 +497,7 @@ async def save_session_to_local(
         "customer_id": customer_id,
         "saved_at": datetime.utcnow().isoformat()
     }
-# Update the list files endpoint to use audio_files folder
+
 @app.get("/audio-stream/local-files")
 async def list_local_audio_files(token_data = Depends(verify_token)):
     """List all audio files in the audio_files directory"""
@@ -496,7 +507,7 @@ async def list_local_audio_files(token_data = Depends(verify_token)):
     
     files = []
     for filename in os.listdir(audio_dir):
-        if filename.endswith(('.webm', '.wav', '.mp3', '.mp4')):  # Include various audio formats
+        if filename.endswith(('.webm', '.wav', '.mp3', '.mp4')):
             file_path = os.path.join(audio_dir, filename)
             file_stat = os.stat(file_path)
             files.append({
@@ -517,7 +528,6 @@ async def list_local_audio_files(token_data = Depends(verify_token)):
         "directory": audio_dir
     }
 
-# Add endpoint to download files from audio_files directory
 @app.get("/audio-stream/download-local/{filename}")
 async def download_local_audio_file(filename: str, token_data = Depends(verify_token)):
     """Download a specific file from audio_files directory"""
@@ -532,7 +542,6 @@ async def download_local_audio_file(filename: str, token_data = Depends(verify_t
         raise HTTPException(status_code=403, detail="Access denied")
     
     return FileResponse(path=file_path, filename=filename)
-
 
 @app.get("/health")
 def health_check():
