@@ -7,6 +7,7 @@ import os
 import asyncio
 from typing import Dict, List
 import uuid
+
 from datetime import datetime
 
 # Import from your existing structure
@@ -16,6 +17,7 @@ from supabase_service import supabase_service
 from live_transcriber import stream_to_transcribe
 
 # Configure logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,7 @@ async def download_audio(audio_id: str, current_user: User = Depends(get_current
 
     return FileResponse(path=file_path, filename=f"audio_{audio_id}.webm")
 
+
 @app.post("/audio-stream/start/{session_id}")
 async def start_audio_session(
     session_id: str,
@@ -169,6 +172,7 @@ async def start_audio_session(
     if current_user.role != "customer":
         raise HTTPException(status_code=403, detail="Only customers can start audio sessions")
     
+
     if session_id in audio_stream_queues:
         raise HTTPException(status_code=400, detail="Session already exists")
 
@@ -188,11 +192,13 @@ async def start_audio_session(
         "status": "streaming"
     }
 
+
 @app.post("/audio-stream/upload/{session_id}")
 async def upload_audio_chunk(
     session_id: str,
     audio_chunk: UploadFile = File(...),
     chunk_index: int = 0,
+
     current_user: User = Depends(get_current_user)
 ):
     """Upload audio chunk for streaming session"""
@@ -204,6 +210,7 @@ async def upload_audio_chunk(
 
     chunk_data = await audio_chunk.read()
 
+
     # Feed transcription queue
     await audio_stream_queues[session_id].put(chunk_data)
 
@@ -211,6 +218,7 @@ async def upload_audio_chunk(
     if session_id not in audio_chunks:
         audio_chunks[session_id] = []
         
+
     audio_chunks[session_id].append({
         "index": chunk_index,
         "data": chunk_data,
@@ -294,6 +302,7 @@ async def download_session_audio(session_id: str, current_user: User = Depends(g
         f.write(combined_data)
 
     return FileResponse(path=file_path, filename=f"session_{session_id}.webm")
+
 
 @app.post("/audio-stream/save-local/{session_id}")
 async def save_session_to_local(
@@ -385,6 +394,7 @@ async def download_local_audio_file(filename: str, current_user: User = Depends(
 
     return FileResponse(path=file_path, filename=filename)
 
+
 @app.get("/")
 async def root():
     """API root endpoint"""
@@ -398,6 +408,7 @@ async def root():
             "active_streams": len(audio_stream_queues)
         }
     }
+
 
 @app.get("/health")
 async def health_check():
