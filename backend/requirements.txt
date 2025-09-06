@@ -1,0 +1,53 @@
+
+# Core FastAPI and Web Server
+fastapi
+uvicorn
+python-multipart
+starlette
+
+# Authentication & Security  
+supabase
+python-dotenv
+passlib
+bcrypt
+python-jose
+cryptography
+
+# Your existing core functionality
+amazon-transcribe
+aiortc
+aiofiles
+sounddevice
+
+# LangChain & AI (if you use these)
+langchain
+langchain-anthropic
+langchain-aws
+langchain-chroma
+langchain-community
+anthropic
+openai-whisper
+
+# Data processing (if you use these)
+pandas
+numpy
+
+# Audio/Video processing
+av
+ffmpeg
+
+# AWS & Cloud
+boto3
+awscrt
+
+# Database & Storage  
+SQLAlchemy
+chromadb
+redis
+
+# Other utilities you might need
+requests
+pydantic
+email-validator
+PyYAML
+python-dateutil
