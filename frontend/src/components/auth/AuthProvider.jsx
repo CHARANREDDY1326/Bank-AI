@@ -1,4 +1,4 @@
-// src/components/auth/AuthProvider.jsx
+// src/components/auth/AuthProvider.jsx - Updated for Supabase backend
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
@@ -24,17 +24,16 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  const getApiUrl = () => {
+    if (window.location.hostname === 'localhost') {
+      return 'http://localhost:9795';
+    }
+    return 'https://ec2-44-196-69-226.compute-1.amazonaws.com';
+  };
+
   const validateToken = async () => {
     try {
       setLoading(true);
-      
-      const getApiUrl = () => {
-        if (window.location.hostname === 'localhost') {
-          return 'http://localhost:9795';
-        }
-        // Your FIXED Elastic IP hostname
-        return 'https://ec2-44-196-69-226.compute-1.amazonaws.com';
-      };
       
       const response = await fetch(`${getApiUrl()}/auth/me`, {
         headers: {
@@ -56,6 +55,7 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   };
+
   const login = (userData, accessToken) => {
     setUser(userData);
     setToken(accessToken);
@@ -87,7 +87,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     isAgent,
     isCustomer,
-    setLoading
+    setLoading,
+    getApiUrl // Export for use in other components
   };
 
   return (

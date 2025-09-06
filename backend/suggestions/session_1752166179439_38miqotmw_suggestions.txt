@@ -1,0 +1,15 @@
+
+=== SUGGESTION GENERATED ===
+Timestamp: 2025-07-10 22:20:21
+Session ID: session_1752166179439_38miqotmw
+Intent: fraud_reporting
+Query: I have received multiple messages indicating unauthorized money deductions from my account and need assistance investigating potential fraudulent transactions.
+Suggestion:
+1. Log in to your Bank-AI account on the website or mobile app.
+2. Click on the 'Accounts' tab.
+3. Select the account for which you have received unauthorized deduction messages.
+4. Scroll down to the 'Transactions' section and review the recent transactions for any unfamiliar activity.
+5. If you identify any suspicious transactions, click on the 'Report Fraud' button next to the transaction.
+6. Fill out the required information in the fraud report form and submit it. Our fraud investigation team will review your case and contact you within 24 hours.
+================================
+

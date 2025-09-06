@@ -1,73 +1,33 @@
-// src/components/auth/CustomerAuth.jsx - No Domain Version
-import React, { useState, useEffect } from 'react';
-import { Mail, User, Phone, CheckCircle, AlertCircle, ArrowLeft, Server } from 'lucide-react';
+// src/components/auth/CustomerAuth.jsx - Updated for Supabase backend
+import React, { useState } from 'react';
+import { Mail, User, Eye, EyeOff, Lock, CheckCircle, AlertCircle, Server, Phone } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 
-
-
 const CustomerAuth = ({ onSwitchToAgent }) => {
-// Initialize state with localStorage data
-const getInitialState = () => {
-  try {
-    const saved = localStorage.getItem('customerAuthState');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      console.log('🔍 Initializing with saved state:', parsed);
-      return parsed;
-    }
-  } catch (e) {
-    console.error('Error loading initial state:', e);
-  }
-  return { step: 'signup', formData: { email: '', name: '', code: '' }, success: '' };
-};
-
-const initialState = getInitialState();
-  const [step, setStep] = useState(initialState.step);
-  const [formData, setFormData] = useState(initialState.formData);
+  const [isSignup, setIsSignup] = useState(true);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: ''
+  });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(initialState.success);
-  const { login, loading, setLoading } = useAuth();
-  
-  console.log('🏗️ CustomerAuth component rendering/mounting');
-  console.log('🔍 Current step state:', step);
-  console.log('🔍 Current formData state:', formData);
-
-  // Component lifecycle debugging
-  useEffect(() => {
-    console.log('🚀 CustomerAuth component mounted');
-    return () => {
-      console.log('🛑 CustomerAuth component unmounting');
-    };
-  }, []);
-
-  // Replace the getApiUrl function with:
-  const getApiUrl = () => {
-    if (window.location.hostname === 'localhost') {
-      return 'http://localhost:9795';
-    }
-    // Your FIXED Elastic IP hostname
-    return 'https://ec2-44-196-69-226.compute-1.amazonaws.com';
-  };
+  const [success, setSuccess] = useState('');
+  const { login, loading, setLoading, getApiUrl } = useAuth();
 
   const isLocalhost = window.location.hostname === 'localhost';
 
-  // Persist state changes to localStorage
-  useEffect(() => {
-    localStorage.setItem('customerAuthState', JSON.stringify({ step, formData, success }));
-  }, [step, formData, success]);
-
-  // Debug step changes
-  useEffect(() => {
-    console.log('🔄 Step changed to:', step);
-  }, [step]);
-
-  const handleSignup = async () => {
-    console.log('🎯 handleSignup called');
-    console.log('🔍 Current formData:', formData);
-    
-    if (!formData.email || !formData.name) {
-      setError('Please fill in all fields');
-      return;
+  const handleSubmit = async () => {
+    if (isSignup) {
+      if (!formData.name || !formData.email || !formData.password) {
+        setError('Please fill in all fields');
+        return;
+      }
+    } else {
+      if (!formData.email || !formData.password) {
+        setError('Please fill in all fields');
+        return;
+      }
     }
 
     if (!isValidEmail(formData.email)) {
@@ -75,100 +35,69 @@ const initialState = getInitialState();
       return;
     }
 
+    if (formData.password && formData.password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
       const apiUrl = getApiUrl();
-      console.log('🚀 Sending customer signup request to:', apiUrl);
-
-      const response = await fetch(`${apiUrl}/auth/customer/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      
+      let endpoint, body;
+      
+      if (isSignup) {
+        console.log('🚀 Customer signup attempt to:', apiUrl);
+        endpoint = '/auth/customer/signup';
+        body = {
+          name: formData.name.trim(),
           email: formData.email.trim(),
-          name: formData.name.trim()
-        })
-      });
-
-      const data = await response.json();
-      console.log('📥 Customer signup response:', response.status, data);
-      console.log('📥 Response OK status:', response.ok);
-
-      if (response.ok) {
-        console.log('✅ Customer signup successful');
-        console.log('🔄 About to set success message and step');
-        console.log('🔍 Current step before update:', step);
-
-        setSuccess(`Verification code sent to ${formData.email}! Check your terminal for the code.`);
-        
-        console.log('🔄 About to call setStep(verify)');
-        setStep('verify');
-        console.log('🔄 setStep(verify) called');
-        console.log('🔍 Step should now be "verify"');
-
+          password: formData.password
+        };
       } else {
-        console.log('❌ Response not OK, status:', response.status);
-        setError(data.detail || 'Signup failed');
-        console.error('❌ Customer signup failed:', data);
+        console.log('🔐 Customer login attempt to:', apiUrl);
+        endpoint = '/auth/login';
+        body = {
+          email: formData.email.trim(),
+          password: formData.password
+        };
       }
-    } catch (error) {
-      console.log('❌ Caught error in handleSignup:', error);
-      setError('Network error. Please check your connection.');
-      console.error('❌ Customer signup network error:', error);
-    } finally {
-      console.log('🔄 Setting loading to false');
-      setLoading(false);
-    }
-  };
 
-  const handleVerification = async () => {
-    if (!formData.code || formData.code.length !== 6) {
-      setError('Please enter the 6-digit verification code');
-      return;
-    }
-
-    if (!formData.email) {
-      setError('Email missing. Please go back and signup again.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const apiUrl = getApiUrl();
-      console.log('🔐 Verifying customer code at:', apiUrl);
-
-      const response = await fetch(`${apiUrl}/auth/customer/verify`, {
+      const response = await fetch(`${apiUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          email: formData.email,
-          code: formData.code
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await response.json();
-      console.log('📥 Customer verification response:', response.status, data);
+      console.log('📥 Customer auth response:', response.status, data);
 
       if (response.ok) {
-        console.log('✅ Customer verification successful');
-        // Clear localStorage after successful login
-        localStorage.removeItem('customerAuthState');
+        console.log(isSignup ? '✅ Customer signup successful' : '✅ Customer login successful');
+        
+        // Check if user is actually a customer (for login)
+        if (!isSignup && data.user_info.role !== 'customer') {
+          setError("This account is not a customer account. Please use agent login.");
+          return;
+        }
+        
+        if (isSignup) {
+          setSuccess(`Welcome ${formData.name}! Account created successfully.`);
+        }
+        
         login(data.user_info, data.access_token);
       } else {
-        setError(data.detail || 'Verification failed');
-        console.error('❌ Customer verification failed:', data);
+        setError(data.detail || (isSignup ? 'Signup failed' : 'Login failed'));
+        console.error(isSignup ? '❌ Customer signup failed:' : '❌ Customer login failed:', data);
       }
     } catch (error) {
       setError('Network error. Please check your connection.');
-      console.error('❌ Customer verification network error:', error);
+      console.error('❌ Customer auth network error:', error);
     } finally {
       setLoading(false);
     }
@@ -176,20 +105,8 @@ const initialState = getInitialState();
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
-      if (step === 'signup') {
-        handleSignup();
-      } else {
-        handleVerification();
-      }
+      handleSubmit();
     }
-  };
-
-  const handleBackToSignup = () => {
-    console.log('🔙 Going back to signup');
-    setStep('signup');
-    setError('');
-    setSuccess('');
-    setFormData({ ...formData, code: '' });
   };
 
   const isValidEmail = (email) => {
@@ -197,9 +114,20 @@ const initialState = getInitialState();
     return emailRegex.test(email);
   };
 
-  const handleCodeChange = (e) => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setFormData({ ...formData, code: value });
+  const fillDemoCredentials = () => {
+    if (isSignup) {
+      setFormData({
+        name: 'Demo Customer',
+        email: 'demo.customer@example.com',
+        password: 'customer123'
+      });
+    } else {
+      setFormData({
+        name: '',
+        email: 'demo.customer@example.com',
+        password: 'customer123'
+      });
+    }
   };
 
   return (
@@ -211,13 +139,10 @@ const initialState = getInitialState();
             <Phone className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
-            {step === 'signup' ? 'Customer Support' : 'Verify Your Email'}
+            {isSignup ? 'Customer Registration' : 'Customer Support'}
           </h1>
           <p className="text-gray-600">
-            {step === 'signup'
-              ? 'Get connected with our support team'
-              : `Enter the code sent to ${formData.email}`
-            }
+            {isSignup ? 'Create your customer account' : 'Sign in to get support'}
           </p>
 
           {/* Connection indicator */}
@@ -247,137 +172,127 @@ const initialState = getInitialState();
           </div>
         )}
 
-        {step === 'signup' ? (
-          <div>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    onKeyPress={handleKeyPress}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
-                    placeholder="Enter your full name"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    onKeyPress={handleKeyPress}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
-                    placeholder="Enter your email address"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={handleSignup}
-                disabled={loading || !formData.name || !formData.email}
-                className="w-full bg-gradient-to-r from-green-500 to-teal-600 text-white py-3 rounded-xl font-medium hover:from-green-600 hover:to-teal-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Sending Code...
-                  </div>
-                ) : (
-                  'Send Verification Code'
-                )}
-              </button>
-
-              {/* Temporary debug button */}
-              <button
-                onClick={() => {
-                  console.log('🔧 Debug: Manually setting step to verify');
-                  setStep('verify');
-                  setSuccess('Debug: Manual step change');
-                }}
-                className="w-full bg-yellow-500 text-white py-2 rounded-lg text-sm mt-2"
-              >
-                Debug: Force Step to Verify
-              </button>
-
-              {/* Clear localStorage debug button */}
-              <button
-                onClick={() => {
-                  console.log('🧹 Debug: Clearing localStorage');
-                  localStorage.removeItem('customerAuthState');
-                  setStep('signup');
-                  setFormData({ email: '', name: '', code: '' });
-                  setSuccess('');
-                  setError('');
-                }}
-                className="w-full bg-red-500 text-white py-2 rounded-lg text-sm mt-2"
-              >
-                Debug: Clear localStorage
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Verification Code
-                </label>
+        {/* Form Fields */}
+        <div className="space-y-4 mb-6">
+          {isSignup && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  value={formData.code}
-                  onChange={handleCodeChange}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   onKeyPress={handleKeyPress}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 text-center text-2xl font-mono tracking-widest outline-none text-gray-900 placeholder-gray-400"
-                  placeholder="000000"
-                  maxLength="6"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
+                  placeholder="Enter your full name"
                   disabled={loading}
-                  autoFocus
                 />
-                <p className="text-xs text-gray-500 mt-1 text-center">
-                  Enter the 6-digit code from your terminal
-                </p>
               </div>
+            </div>
+          )}
 
-              <div className="text-center text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
-                Code sent to: <span className="font-medium text-gray-800">{formData.email}</span>
-              </div>
-
-              <button
-                onClick={handleVerification}
-                disabled={loading || formData.code.length !== 6}
-                className="w-full bg-gradient-to-r from-green-500 to-teal-600 text-white py-3 rounded-xl font-medium hover:from-green-600 hover:to-teal-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Verifying...
-                  </div>
-                ) : (
-                  'Verify & Connect'
-                )}
-              </button>
-
-              <button
-                onClick={handleBackToSignup}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onKeyPress={handleKeyPress}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
+                placeholder="Enter your email address"
                 disabled={loading}
-                className="w-full flex items-center justify-center text-gray-600 hover:text-gray-800 py-2 text-sm transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1" />
-                Back to signup
-              </button>
+              />
             </div>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onKeyPress={handleKeyPress}
+                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
+                placeholder="Enter your password"
+                disabled={loading}
+                minLength="6"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={loading}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+            {isSignup && (
+              <p className="text-xs text-gray-500 mt-1">
+                Password must be at least 6 characters long
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <button
+          onClick={handleSubmit}
+          disabled={loading || !formData.email || !formData.password || (isSignup && !formData.name)}
+          className="w-full bg-gradient-to-r from-green-500 to-teal-600 text-white py-3 rounded-xl font-medium hover:from-green-600 hover:to-teal-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+        >
+          {loading ? (
+            <div className="flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+              {isSignup ? 'Creating Account...' : 'Signing In...'}
+            </div>
+          ) : (
+            isSignup ? 'Create Account & Connect' : 'Sign In'
+          )}
+        </button>
+
+        {/* Demo Credentials */}
+        {(isLocalhost || window.location.host.includes('ec2-')) && (
+          <div className="bg-green-50 rounded-lg border border-green-200 p-4 mb-6">
+            <p className="text-sm text-green-800 font-medium mb-3">
+              Demo Credentials:
+            </p>
+            <button
+              onClick={fillDemoCredentials}
+              className="w-full text-left p-2 bg-white rounded border border-green-200 hover:bg-green-50 transition-colors"
+              disabled={loading}
+            >
+              <div className="text-xs text-green-600">
+                <div className="font-medium">Demo Customer</div>
+                <div>Email: demo.customer@example.com • Password: customer123</div>
+              </div>
+            </button>
+          </div>
         )}
+
+        {/* Toggle Signup/Login */}
+        <div className="text-center mb-6">
+          <button
+            onClick={() => {
+              setIsSignup(!isSignup);
+              setError('');
+              setSuccess('');
+              setFormData({ name: '', email: '', password: '' });
+            }}
+            className="text-green-600 hover:text-green-700 font-medium transition-colors text-sm"
+            disabled={loading}
+          >
+            {isSignup ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+          </button>
+        </div>
 
         {/* Connection Info */}
         <div className="bg-gray-50 rounded-lg p-3 mb-6">
@@ -391,15 +306,6 @@ const initialState = getInitialState();
                 ✅ Connected to EC2 instance
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Debug Info */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
-          <div className="text-xs text-blue-600">
-            <div className="font-medium">Debug Info:</div>
-            <div>Current Step: <span className="font-mono">{step}</span></div>
-            <div>localStorage: <span className="font-mono break-all">{localStorage.getItem('customerAuthState') || 'null'}</span></div>
           </div>
         </div>
 

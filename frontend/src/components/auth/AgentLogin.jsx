@@ -1,33 +1,32 @@
-// src/components/auth/AgentLogin.jsx - No Domain Version
+// src/components/auth/AgentLogin.jsx - Updated for Supabase backend
 import React, { useState } from "react";
-import { Eye, EyeOff, User, Lock, Shield, AlertCircle, Server } from "lucide-react";
+import { Eye, EyeOff, User, Lock, Shield, AlertCircle, Server, Mail } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 
 const AgentLogin = ({ onSwitchToCustomer }) => {
-  const [credentials, setCredentials] = useState({
-    username: "",
+  const [isSignup, setIsSignup] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const { login, loading, setLoading } = useAuth();
-
-  // Get API URL - works with or without domain
-// Replace the getApiUrl function with:
-const getApiUrl = () => {
-  if (window.location.hostname === 'localhost') {
-    return 'http://localhost:9795';
-  }
-  // Your FIXED Elastic IP hostname
-  return 'https://ec2-44-196-69-226.compute-1.amazonaws.com';
-};
+  const { login, loading, setLoading, getApiUrl } = useAuth();
 
   const isLocalhost = window.location.hostname === 'localhost';
 
   const handleSubmit = async () => {
-    if (!credentials.username || !credentials.password) {
-      setError("Please fill in all fields");
-      return;
+    if (isSignup) {
+      if (!formData.name || !formData.email || !formData.password) {
+        setError("Please fill in all fields");
+        return;
+      }
+    } else {
+      if (!formData.email || !formData.password) {
+        setError("Please fill in all fields");
+        return;
+      }
     }
 
     setLoading(true);
@@ -35,28 +34,53 @@ const getApiUrl = () => {
 
     try {
       const apiUrl = getApiUrl();
-      console.log('🔐 Agent login attempt to:', apiUrl);
+      
+      let endpoint, body;
+      
+      if (isSignup) {
+        console.log('🔐 Agent signup attempt to:', apiUrl);
+        endpoint = '/auth/agent/signup';
+        body = {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password
+        };
+      } else {
+        console.log('🔐 Agent login attempt to:', apiUrl);
+        endpoint = '/auth/login';
+        body = {
+          email: formData.email,
+          password: formData.password
+        };
+      }
 
-      const response = await fetch(`${apiUrl}/auth/agent/login`, {
+      const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        console.log('✅ Agent login successful');
+        console.log(isSignup ? '✅ Agent signup successful' : '✅ Agent login successful');
+        
+        // Check if user is actually an agent (for login)
+        if (!isSignup && data.user_info.role !== 'agent') {
+          setError("This account is not an agent account. Please use customer login.");
+          return;
+        }
+        
         login(data.user_info, data.access_token);
       } else {
-        setError(data.detail || "Login failed");
-        console.error('❌ Agent login failed:', data);
+        setError(data.detail || (isSignup ? "Signup failed" : "Login failed"));
+        console.error(isSignup ? '❌ Agent signup failed:' : '❌ Agent login failed:', data);
       }
     } catch (error) {
       setError("Network error. Please check your connection.");
-      console.error("❌ Agent login network error:", error);
+      console.error("❌ Agent auth network error:", error);
     } finally {
       setLoading(false);
     }
@@ -68,8 +92,20 @@ const getApiUrl = () => {
     }
   };
 
-  const fillDemoCredentials = (username, password) => {
-    setCredentials({ username, password });
+  const fillDemoCredentials = () => {
+    if (isSignup) {
+      setFormData({
+        name: "Demo Agent",
+        email: "demo.agent@bank.com",
+        password: "agent123"
+      });
+    } else {
+      setFormData({
+        name: "",
+        email: "demo.agent@bank.com",
+        password: "agent123"
+      });
+    }
   };
 
   return (
@@ -81,9 +117,11 @@ const getApiUrl = () => {
             <Shield className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
-            Agent Portal
+            {isSignup ? 'Agent Registration' : 'Agent Portal'}
           </h1>
-          <p className="text-gray-600">Access your support dashboard</p>
+          <p className="text-gray-600">
+            {isSignup ? 'Create your agent account' : 'Access your support dashboard'}
+          </p>
           
           {/* Connection indicator */}
           <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
@@ -104,23 +142,45 @@ const getApiUrl = () => {
           </div>
         )}
 
-        {/* Login Fields */}
+        {/* Form Fields */}
         <div className="space-y-4 mb-6">
+          {isSignup && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Full Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  onKeyPress={handleKeyPress}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
+                  placeholder="Enter your full name"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Username
+              Email Address
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
-                type="text"
-                value={credentials.username}
+                type="email"
+                value={formData.email}
                 onChange={(e) =>
-                  setCredentials({ ...credentials, username: e.target.value })
+                  setFormData({ ...formData, email: e.target.value })
                 }
                 onKeyPress={handleKeyPress}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
-                placeholder="Enter your username"
+                placeholder="Enter your email address"
                 disabled={loading}
               />
             </div>
@@ -134,9 +194,9 @@ const getApiUrl = () => {
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type={showPassword ? "text" : "password"}
-                value={credentials.password}
+                value={formData.password}
                 onChange={(e) =>
-                  setCredentials({ ...credentials, password: e.target.value })
+                  setFormData({ ...formData, password: e.target.value })
                 }
                 onKeyPress={handleKeyPress}
                 className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 outline-none text-gray-900 placeholder-gray-500"
@@ -159,52 +219,55 @@ const getApiUrl = () => {
           </div>
         </div>
 
-        {/* Login Button */}
+        {/* Submit Button */}
         <button
           onClick={handleSubmit}
-          disabled={loading || !credentials.username || !credentials.password}
+          disabled={loading || !formData.email || !formData.password || (isSignup && !formData.name)}
           className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3 rounded-xl font-medium hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
         >
           {loading ? (
             <div className="flex items-center justify-center">
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-              Signing in...
+              {isSignup ? 'Creating Account...' : 'Signing in...'}
             </div>
           ) : (
-            "Sign In"
+            isSignup ? 'Create Account' : 'Sign In'
           )}
         </button>
 
-        {/* Demo Credentials - Show in development or testing */}
+        {/* Demo Credentials */}
         {(isLocalhost || window.location.host.includes('ec2-')) && (
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
             <p className="text-sm text-blue-800 font-medium mb-3">
               Demo Credentials:
             </p>
-            <div className="space-y-2">
-              <button
-                onClick={() => fillDemoCredentials("agent1", "agent123")}
-                className="w-full text-left p-2 bg-white rounded border border-blue-200 hover:bg-blue-50 transition-colors"
-                disabled={loading}
-              >
-                <div className="text-xs text-blue-600">
-                  <div className="font-medium">Agent 1</div>
-                  <div>Username: agent1 • Password: agent123</div>
-                </div>
-              </button>
-              <button
-                onClick={() => fillDemoCredentials("agent2", "agent456")}
-                className="w-full text-left p-2 bg-white rounded border border-blue-200 hover:bg-blue-50 transition-colors"
-                disabled={loading}
-              >
-                <div className="text-xs text-blue-600">
-                  <div className="font-medium">Agent 2</div>
-                  <div>Username: agent2 • Password: agent456</div>
-                </div>
-              </button>
-            </div>
+            <button
+              onClick={fillDemoCredentials}
+              className="w-full text-left p-2 bg-white rounded border border-blue-200 hover:bg-blue-50 transition-colors"
+              disabled={loading}
+            >
+              <div className="text-xs text-blue-600">
+                <div className="font-medium">Demo Agent</div>
+                <div>Email: demo.agent@bank.com • Password: agent123</div>
+              </div>
+            </button>
           </div>
         )}
+
+        {/* Toggle Signup/Login */}
+        <div className="text-center mb-6">
+          <button
+            onClick={() => {
+              setIsSignup(!isSignup);
+              setError("");
+              setFormData({ name: "", email: "", password: "" });
+            }}
+            className="text-blue-600 hover:text-blue-700 font-medium transition-colors text-sm"
+            disabled={loading}
+          >
+            {isSignup ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+          </button>
+        </div>
 
         {/* Connection Info */}
         <div className="bg-gray-50 rounded-lg p-3 mb-6">
