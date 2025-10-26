@@ -1,12 +1,37 @@
  import { useEffect, useState } from 'react';
- const useSuggestions = () => {
+const useSuggestions = () => {
     const [suggestions, setSuggestions] = useState([]);
+    
     useEffect(() => {
-        const ws = new WebSocket('ws://localhost:8000/ws/suggestions');
+        // Use the same host as the current page, but with WebSocket protocol
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname;
+        const port = '9795'; // Backend port
+        const ws = new WebSocket(`${protocol}//${host}:${port}/ws/suggestions`);
+
+        ws.onopen = () => {
+            console.log('🔌 Suggestions WebSocket connected');
+        };
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setSuggestions((prev) => [...prev.slice(-4), data.suggestion]); 
+            console.log('📨 Received message:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                if (data.suggestion) {
+                    console.log('💡 Received suggestion:', data.suggestion);
+                    setSuggestions((prev) => [...prev.slice(-4), data.suggestion]);
+                }
+            } catch (error) {
+                console.error('❌ Error parsing suggestion:', error);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('❌ Suggestions WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('🔌 Suggestions WebSocket disconnected');
         };
 
         return () => {
@@ -15,5 +40,5 @@
     }, []);
 
     return suggestions;
- };
- export default useSuggestions;
+};
+export default useSuggestions;

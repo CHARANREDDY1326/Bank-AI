@@ -13,7 +13,7 @@ import os
 import asyncio
 from typing import Dict, List
 import uuid
-from live_transcriber import stream_to_transcribe
+from live_transcriber import stream_to_transcribe # <-- This import is now safe
 
 audio_stream_queues = {}
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +62,9 @@ audio_storage = {}
 
 audio_sessions: Dict[str, Dict] = {}
 audio_chunks: Dict[str, List] = {}
+
+# Store active suggestion WebSocket connections
+suggestion_connections: List[WebSocket] = []
 
 class UserLogin(BaseModel):
     username: str
@@ -366,7 +369,9 @@ async def start_audio_session(
     queue = asyncio.Queue()
     audio_stream_queues[session_id] = queue
     os.makedirs("transcripts", exist_ok=True)
-    asyncio.create_task(stream_to_transcribe(session_id, queue))
+    
+    # <-- Pass the broadcast_suggestion function as an argument here
+    asyncio.create_task(stream_to_transcribe(session_id, queue, broadcast_suggestion))
     
     audio_sessions[session_id] = {
         "customer_id": username,
@@ -455,34 +460,26 @@ async def save_session_to_local(
     if session_id not in audio_sessions:
         raise HTTPException(status_code=404, detail="Session metadata not found")
     
-    # Get session info
     session_info = audio_sessions[session_id]
     chunks = audio_chunks[session_id]
     
     if not chunks:
         raise HTTPException(status_code=400, detail="No audio chunks found")
     
-    # Sort chunks by index to ensure proper order
     sorted_chunks = sorted(chunks, key=lambda x: x["index"])
-    
-    # Combine all chunks
     combined_data = b"".join([chunk["data"] for chunk in sorted_chunks])
     
-    # Use your existing audio_files directory
     audio_dir = "audio_files"
     os.makedirs(audio_dir, exist_ok=True)
     
-    # Create filename with timestamp and customer info
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     customer_id = session_info["customer_id"]
     filename = f"customer_{customer_id}_{session_id}_{timestamp}.webm"
     file_path = f"{audio_dir}/{filename}"
     
-    # Save to local file in audio_files folder
     with open(file_path, "wb") as f:
         f.write(combined_data)
     
-    # Get file size
     file_size = os.path.getsize(file_path)
     
     logger.info(f"💾 Audio session saved to audio_files: {file_path} ({file_size} bytes)")
@@ -518,7 +515,6 @@ async def list_local_audio_files(token_data = Depends(verify_token)):
                 "path": file_path
             })
     
-    # Sort by creation time (newest first)
     files.sort(key=lambda x: x["created"], reverse=True)
     
     return {
@@ -537,11 +533,58 @@ async def download_local_audio_file(filename: str, token_data = Depends(verify_t
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     
-    # Security check - ensure the file is within audio_files directory
     if not os.path.abspath(file_path).startswith(os.path.abspath(audio_dir)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     return FileResponse(path=file_path, filename=filename)
+
+@app.websocket("/ws/suggestions")
+async def suggestions_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time AI suggestions"""
+    await websocket.accept()
+    suggestion_connections.append(websocket)
+    
+    try:
+        logger.info(f"✅ Suggestions WebSocket connected. Total active: {len(suggestion_connections)}")
+        
+        # Keep connection alive by waiting for disconnect
+        # We don't need to receive messages for suggestions, just maintain the connection
+        try:
+            await websocket.receive_text()  # Wait for any message (including disconnect)
+        except WebSocketDisconnect:
+            pass  # Normal disconnect
+            
+    except Exception as e:
+        logger.error(f"❌ Suggestions WebSocket error: {e}")
+    finally:
+        if websocket in suggestion_connections:
+            suggestion_connections.remove(websocket)
+        logger.info(f"❌ Suggestions WebSocket disconnected. Total active: {len(suggestion_connections)}")
+
+async def broadcast_suggestion(suggestion: str):
+    """Broadcast suggestion to all connected agents"""
+    logger.info(f"🔍 [broadcast_suggestion] Attempting to broadcast to {len(suggestion_connections)} connections")
+    
+    if not suggestion_connections:
+        logger.warning("⚠️ [broadcast_suggestion] No suggestion connections available")
+        return
+    
+    message = json.dumps({"suggestion": suggestion})
+    disconnected = []
+    
+    for i, websocket in enumerate(suggestion_connections):
+        try:
+            await websocket.send_text(message)
+            logger.info(f"✅ [broadcast_suggestion] Successfully sent to connection {i}")
+        except Exception as e:
+            logger.error(f"❌ [broadcast_suggestion] Failed to send suggestion to WebSocket {i}: {e}")
+            disconnected.append(websocket)
+    
+    for websocket in disconnected:
+        if websocket in suggestion_connections:
+            suggestion_connections.remove(websocket)
+    
+    logger.info(f"📢 [broadcast_suggestion] Suggestion broadcasted to {len(suggestion_connections)} agents: {suggestion[:50]}...")
 
 @app.get("/health")
 def health_check():

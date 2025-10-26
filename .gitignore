@@ -38,3 +38,8 @@ Thumbs.db
 # Misc
 *.swp
 *.swo 
+
+# Transcripts
+transcripts/
+#suggestion files   
+suggestions/
