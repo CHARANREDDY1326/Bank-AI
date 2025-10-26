@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_BASE_URL=https://ec2-44-196-69-226.compute-1.amazonaws.com
+        - REACT_APP_WS_PROTOCOL=wss
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HTTPS=true
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - webrtc-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "9795:9795"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-bankai_secret_key_change_in_production_2024}
+      - CORS_ORIGINS=*
+      - ENVIRONMENT=production
+    volumes:
+      - ./backend:/app
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9795/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - webrtc-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-ssl.conf:/etc/nginx/nginx.conf:ro
+      # Mount self-signed certificates instead of Let's Encrypt
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /etc/ssl/private:/etc/ssl/private:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - webrtc-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - webrtc-network
+
+networks:
+  webrtc-network:
+    driver: bridge
+
+volumes:
+  redis_data:
