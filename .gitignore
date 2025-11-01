@@ -37,4 +37,9 @@ Thumbs.db
 
 # Misc
 *.swp
-*.swo 
+*.swo
+
+# Backend folders
+backend/suggestions/
+backend/transcripts/ 
+audio_files/
