@@ -366,12 +366,12 @@ const AudioHandler = ({ role }) => {
  const isCallActive = connectionStatus === 'connected';
 
  return (
-   <div className="p-6 border-2 rounded-lg shadow-sm">
-     <div className="flex items-center justify-between mb-4">
-       <h3 className="text-xl font-semibold">
+   <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+     <div className="flex items-center justify-between mb-6">
+       <h3 className="text-2xl font-bold text-gray-800">
          Audio Handler ({role === 'agent' ? '🎧 Agent' : '👤 Customer'})
        </h3>
-       <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+       <div className={`px-4 py-2 rounded-full text-sm font-semibold shadow-sm ${
          connectionStatus === 'connected' ? 'bg-green-100 text-green-800' :
          connectionStatus === 'failed' ? 'bg-red-100 text-red-800' :
          'bg-yellow-100 text-yellow-800'
@@ -396,11 +396,11 @@ const AudioHandler = ({ role }) => {
        )}
      </div>
 
-     <div className="flex flex-wrap gap-3">
+     <div className="flex flex-wrap gap-3 mb-4">
        {connectionStatus === 'connected' && !isRecording && role === 'agent' && (
          <button
            onClick={handleManualStart}
-           className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded text-white text-sm font-medium transition-colors"
+           className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 px-6 py-3 rounded-xl text-white text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
          >
            📹 Start Recording
          </button>
@@ -409,7 +409,7 @@ const AudioHandler = ({ role }) => {
        {isRecording && (
          <button
            onClick={stopRecording}
-           className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded text-white text-sm font-medium transition-colors"
+           className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 px-6 py-3 rounded-xl text-white text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
          >
            ⏹️ Stop Recording
          </button>
@@ -418,7 +418,7 @@ const AudioHandler = ({ role }) => {
        {downloadReady && (
          <button
            onClick={handleDownload}
-           className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded text-white text-sm font-medium transition-colors"
+           className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 px-6 py-3 rounded-xl text-white text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
          >
            💾 Download Audio
          </button>
@@ -426,8 +426,8 @@ const AudioHandler = ({ role }) => {
      </div>
 
      {role === 'agent' && chunksRef.current.length > 0 && (
-       <div className="mt-4 text-sm text-gray-600">
-         Recorded {chunksRef.current.length} audio chunks • 
+       <div className="mt-4 text-sm text-gray-600 bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">
+         <span className="font-semibold">📊 Stats:</span> Recorded {chunksRef.current.length} audio chunks • 
          Size: ~{Math.round(chunksRef.current.reduce((acc, chunk) => acc + chunk.size, 0) / 1024)}KB
        </div>
      )}
@@ -439,8 +439,8 @@ const AudioHandler = ({ role }) => {
      />
 
      {/* Debug info for troubleshooting */}
-     <div className="mt-4 text-xs text-gray-500 bg-gray-50 p-2 rounded">
-       Debug: Role={userRole}, State={connectionState}, WS_Error={webrtcError || 'none'}, SessionID={sessionId}
+     <div className="mt-4 text-xs text-gray-500 bg-gray-50 p-3 rounded-xl border border-gray-200">
+       <span className="font-semibold text-gray-700">🔧 Debug Info:</span> Role={userRole}, State={connectionState}, WS_Error={webrtcError || 'none'}, SessionID={sessionId}
      </div>
    </div>
  );

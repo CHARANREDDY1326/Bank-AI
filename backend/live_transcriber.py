@@ -103,9 +103,10 @@ async def audio_stream_generator(audio_queue: asyncio.Queue, input_stream):
         print(f"❌ [audio_stream_generator] Exception: {e}")
 
 class MyTranscriptHandler(TranscriptResultStreamHandler):
-    def __init__(self, output_stream, session_id: str):
+    def __init__(self, output_stream, session_id: str, broadcast_callback):
         super().__init__(output_stream)
         self.session_id = session_id
+        self.broadcast_callback = broadcast_callback # <-- Store the callback
         self.final_transcripts = []
         self.partial_transcripts = []
         self.last_suggestion_time = time.time()
@@ -133,7 +134,6 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
                         if hasattr(result, 'alternatives') and result.alternatives:
                             for alt in result.alternatives:
                                 transcript_text = getattr(alt, 'transcript', '').strip()
-                                confidence = getattr(alt, 'confidence', 0)
                                 
                                 if transcript_text:  # Only process non-empty transcripts
                                     if not is_partial:  # Final result
@@ -152,7 +152,7 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
                     print("📭 [handle_transcript_event] No results in transcript")
                     
                     # Even if no results, check if we should generate suggestions based on time
-                    if time.time() - self.last_suggestion_time > 10:  # Reduced from 15 to 10 seconds
+                    if time.time() - self.last_suggestion_time > 10:
                         await self.try_generate_suggestion()
                         
         except Exception as e:
@@ -167,10 +167,6 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
             time_since_last_suggestion = current_time - self.last_suggestion_time
             time_since_last_transcript = current_time - self.last_transcript_time
             
-            # Generate suggestion if:
-            # 1. We have 2+ final transcripts (reduced from 3), OR
-            # 2. It's been 10+ seconds since last suggestion AND we have some text, OR
-            # 3. It's been 5+ seconds since last transcript and we have text
             should_generate = (
                 len(self.final_transcripts) >= 2 or 
                 (time_since_last_suggestion > 10 and self.accumulated_text.strip()) or
@@ -181,13 +177,11 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
                 full_transcript = self.accumulated_text.strip()
                 
                 if not full_transcript:
-                    # Fallback: read from transcript file if accumulated text is empty
                     full_transcript = await self.read_transcript_file()
                 
                 if full_transcript:
                     print(f"🧠 [suggestion] Processing transcript: {full_transcript}")
                     
-                    # Classify and extract banking-related query
                     intent, cleaned_query = classify_intent_and_giveQuery(full_transcript)
                     
                     if intent not in ["irrelevant", "other", "error"] and cleaned_query:
@@ -196,9 +190,7 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
                         print("💬 [suggestion] Query:", cleaned_query)
                         print("📢 [suggestion] Final Suggestion:\n", suggestion)
                         
-                        # Save suggestion to file
                         await self.write_suggestion(intent, cleaned_query, suggestion)
-                        
                     else:
                         print(f"⚠️ [suggestion] No actionable intent found: {intent}")
                         if intent == "error":
@@ -223,7 +215,6 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
             if os.path.exists(transcript_path):
                 async with aiofiles.open(transcript_path, mode="r") as f:
                     content = await f.read()
-                    # Extract just the text content, removing timestamps
                     lines = content.strip().split('\n')
                     text_parts = []
                     for line in lines:
@@ -247,7 +238,7 @@ class MyTranscriptHandler(TranscriptResultStreamHandler):
             print(f"❌ [write_transcript] Error writing to file: {e}")
 
     async def write_suggestion(self, intent: str, query: str, suggestion: str):
-        """Write suggestion to file"""
+        """Write suggestion to file and broadcast via WebSocket"""
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             suggestion_data = f"""
@@ -268,10 +259,20 @@ Suggestion:
                 
             print(f"✅ [write_suggestion] Suggestion saved to suggestions/{self.session_id}_suggestions.txt")
             
+            # Broadcast suggestion via WebSocket to connected agents
+            try:
+                # <-- REMOVED: from main import broadcast_suggestion
+                # USE the callback function passed during initialization
+                if self.broadcast_callback:
+                    await self.broadcast_callback(suggestion)
+                    print(f"📢 [write_suggestion] Suggestion broadcasted via callback")
+            except Exception as ws_error:
+                print(f"⚠️ [write_suggestion] WebSocket broadcast failed: {ws_error}")
+            
         except Exception as e:
             print(f"❌ [write_suggestion] Error writing suggestion: {e}")
 
-async def stream_to_transcribe(session_id: str, audio_queue: asyncio.Queue):
+async def stream_to_transcribe(session_id: str, audio_queue: asyncio.Queue, broadcast_callback):
     print(f"🎙️ [stream_to_transcribe] Starting transcription stream for session {session_id}")
 
     try:
@@ -288,9 +289,9 @@ async def stream_to_transcribe(session_id: str, audio_queue: asyncio.Queue):
 
         print("🔌 [stream_to_transcribe] Connected to Amazon Transcribe")
 
-        handler = MyTranscriptHandler(stream.output_stream, session_id)
+        # Pass the callback down to the handler
+        handler = MyTranscriptHandler(stream.output_stream, session_id, broadcast_callback)
 
-        # Run both tasks concurrently
         await asyncio.gather(
             audio_stream_generator(audio_queue, stream.input_stream),
             handler.handle_events(),

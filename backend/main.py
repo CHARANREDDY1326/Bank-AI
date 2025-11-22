@@ -7,22 +7,20 @@ import os
 import asyncio
 from typing import Dict, List
 import uuid
-
 from datetime import datetime
 
-# Import from your existing structure
+# --- Imports from your Production Version (Version 2) ---
 from auth.routes import router as auth_router, get_current_user
 from auth.models import User
 from supabase_service import supabase_service
 from live_transcriber import stream_to_transcribe
 
 # Configure logging
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
-app = FastAPI(title="BankAI WebRTC Server", version="2.0.0")
+app = FastAPI(title="BankAI WebRTC Server", version="2.1.0 (Merged)")
 
 # Add CORS middleware
 app.add_middleware(
@@ -33,15 +31,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include auth router
+# Include auth router (Supabase)
 app.include_router(auth_router)
 
-# Global variables
+# --- Global State ---
 active_connections: Dict[WebSocket, Dict] = {}
 audio_storage: Dict[str, Dict] = {}
 audio_stream_queues: Dict[str, asyncio.Queue] = {}
 audio_chunks: Dict[str, List] = {}
 
+# Store active suggestion WebSocket connections (From Version 1)
+suggestion_connections: List[WebSocket] = []
+
+# ==========================================
+#  1. SIGNALING WEBSOCKET (WebRTC)
+# ==========================================
 @app.websocket("/ws/signaling/{token}")
 async def websocket_endpoint(websocket: WebSocket, token: str):
     """WebSocket endpoint for signaling with Supabase authentication"""
@@ -109,6 +113,57 @@ async def forward_message(sender_ws: WebSocket, message: Dict):
             except:
                 pass
 
+# ==========================================
+#  2. SUGGESTION WEBSOCKET (AI Logic - From V1)
+# ==========================================
+@app.websocket("/ws/suggestions")
+async def suggestions_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time AI suggestions"""
+    await websocket.accept()
+    suggestion_connections.append(websocket)
+    
+    try:
+        logger.info(f"✅ Suggestions WebSocket connected. Total active: {len(suggestion_connections)}")
+        
+        # Keep connection alive by waiting for disconnect
+        try:
+            await websocket.receive_text()  # Wait for any message
+        except WebSocketDisconnect:
+            pass  # Normal disconnect
+            
+    except Exception as e:
+        logger.error(f"❌ Suggestions WebSocket error: {e}")
+    finally:
+        if websocket in suggestion_connections:
+            suggestion_connections.remove(websocket)
+        logger.info(f"❌ Suggestions WebSocket disconnected. Total active: {len(suggestion_connections)}")
+
+async def broadcast_suggestion(suggestion: str):
+    """Broadcast suggestion to all connected agents"""
+    logger.info(f"🔍 [broadcast_suggestion] Attempting to broadcast to {len(suggestion_connections)} connections")
+    
+    if not suggestion_connections:
+        logger.warning("⚠️ [broadcast_suggestion] No suggestion connections available")
+        return
+    
+    message = json.dumps({"suggestion": suggestion})
+    disconnected = []
+    
+    for i, websocket in enumerate(suggestion_connections):
+        try:
+            await websocket.send_text(message)
+            logger.info(f"✅ [broadcast_suggestion] Successfully sent to connection {i}")
+        except Exception as e:
+            logger.error(f"❌ [broadcast_suggestion] Failed to send: {e}")
+            disconnected.append(websocket)
+    
+    for websocket in disconnected:
+        if websocket in suggestion_connections:
+            suggestion_connections.remove(websocket)
+
+# ==========================================
+#  3. AUDIO UPLOAD (Standard)
+# ==========================================
 @app.post("/audio/upload")
 async def upload_audio(
     file: UploadFile = File(...),
@@ -152,7 +207,7 @@ async def download_audio(audio_id: str, current_user: User = Depends(get_current
 
     audio_info = audio_storage[audio_id]
     
-    # Check if user owns this audio or is an agent
+    # Check permissions
     if current_user.role != "agent" and audio_info["uploaded_by"] != current_user.customer_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -162,7 +217,9 @@ async def download_audio(audio_id: str, current_user: User = Depends(get_current
 
     return FileResponse(path=file_path, filename=f"audio_{audio_id}.webm")
 
-
+# ==========================================
+#  4. LIVE AUDIO STREAMING (AI Integration)
+# ==========================================
 @app.post("/audio-stream/start/{session_id}")
 async def start_audio_session(
     session_id: str,
@@ -171,7 +228,6 @@ async def start_audio_session(
     """Start audio streaming session"""
     if current_user.role != "customer":
         raise HTTPException(status_code=403, detail="Only customers can start audio sessions")
-    
 
     if session_id in audio_stream_queues:
         raise HTTPException(status_code=400, detail="Session already exists")
@@ -180,7 +236,9 @@ async def start_audio_session(
     audio_stream_queues[session_id] = queue
 
     os.makedirs("transcripts", exist_ok=True)
-    asyncio.create_task(stream_to_transcribe(session_id, queue))
+    
+    # IMPORTANT: Pass the broadcast_suggestion callback here!
+    asyncio.create_task(stream_to_transcribe(session_id, queue, broadcast_suggestion))
 
     audio_chunks[session_id] = []
 
@@ -192,13 +250,11 @@ async def start_audio_session(
         "status": "streaming"
     }
 
-
 @app.post("/audio-stream/upload/{session_id}")
 async def upload_audio_chunk(
     session_id: str,
     audio_chunk: UploadFile = File(...),
     chunk_index: int = 0,
-
     current_user: User = Depends(get_current_user)
 ):
     """Upload audio chunk for streaming session"""
@@ -210,14 +266,12 @@ async def upload_audio_chunk(
 
     chunk_data = await audio_chunk.read()
 
-
     # Feed transcription queue
     await audio_stream_queues[session_id].put(chunk_data)
 
     # Store chunk
     if session_id not in audio_chunks:
         audio_chunks[session_id] = []
-        
 
     audio_chunks[session_id].append({
         "index": chunk_index,
@@ -251,12 +305,16 @@ async def end_audio_session(
 
     return {"session_id": session_id, "status": "completed"}
 
+# ==========================================
+#  5. SESSION MANAGEMENT & DOWNLOADS
+# ==========================================
 @app.get("/audio-sessions")
 async def get_audio_sessions(current_user: User = Depends(get_current_user)):
     """Get audio sessions for current user"""
+    sessions = []
+    
     if current_user.role == "agent":
         # Agents can see all sessions
-        sessions = []
         for session_id, chunks in audio_chunks.items():
             if chunks:
                 sessions.append({
@@ -267,7 +325,6 @@ async def get_audio_sessions(current_user: User = Depends(get_current_user)):
                 })
     else:
         # Customers can only see their own sessions
-        sessions = []
         for session_id, chunks in audio_chunks.items():
             if chunks and chunks[0].get("customer_id") == current_user.customer_id:
                 sessions.append({
@@ -285,16 +342,13 @@ async def download_session_audio(session_id: str, current_user: User = Depends(g
     if session_id not in audio_chunks:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Check access permissions
     chunks = audio_chunks[session_id]
     if chunks and current_user.role != "agent" and chunks[0].get("customer_id") != current_user.customer_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Combine all chunks
     all_chunks = sorted(chunks, key=lambda x: x["index"])
     combined_data = b"".join([chunk["data"] for chunk in all_chunks])
 
-    # Save combined file
     os.makedirs("sessions", exist_ok=True)
     file_path = f"sessions/{session_id}_complete.webm"
 
@@ -302,7 +356,6 @@ async def download_session_audio(session_id: str, current_user: User = Depends(g
         f.write(combined_data)
 
     return FileResponse(path=file_path, filename=f"session_{session_id}.webm")
-
 
 @app.post("/audio-stream/save-local/{session_id}")
 async def save_session_to_local(
@@ -317,15 +370,12 @@ async def save_session_to_local(
     if not chunks:
         raise HTTPException(status_code=400, detail="No audio chunks found")
 
-    # Check access permissions
     if current_user.role != "agent" and chunks[0].get("customer_id") != current_user.customer_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Sort chunks by index
     sorted_chunks = sorted(chunks, key=lambda x: x["index"])
     combined_data = b"".join([chunk["data"] for chunk in sorted_chunks])
 
-    # Save to audio_files directory
     audio_dir = "audio_files"
     os.makedirs(audio_dir, exist_ok=True)
 
@@ -337,7 +387,6 @@ async def save_session_to_local(
         f.write(combined_data)
 
     file_size = os.path.getsize(file_path)
-
     logger.info(f"💾 Audio session saved: {file_path} ({file_size} bytes)")
 
     return {
@@ -352,11 +401,14 @@ async def save_session_to_local(
 
 @app.get("/audio-stream/local-files")
 async def list_local_audio_files(current_user: User = Depends(get_current_user)):
-    """List audio files in audio_files directory"""
+    """List all audio files in the audio_files directory"""
+    if current_user.role != "agent":
+         raise HTTPException(status_code=403, detail="Access denied")
+
     audio_dir = "audio_files"
     if not os.path.exists(audio_dir):
         return {"files": [], "count": 0}
-
+    
     files = []
     for filename in os.listdir(audio_dir):
         if filename.endswith(('.webm', '.wav', '.mp3', '.mp4')):
@@ -369,9 +421,9 @@ async def list_local_audio_files(current_user: User = Depends(get_current_user))
                 "modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
                 "path": file_path
             })
-
+    
     files.sort(key=lambda x: x["created"], reverse=True)
-
+    
     return {
         "files": files,
         "count": len(files),
@@ -382,43 +434,19 @@ async def list_local_audio_files(current_user: User = Depends(get_current_user))
 @app.get("/audio-stream/download-local/{filename}")
 async def download_local_audio_file(filename: str, current_user: User = Depends(get_current_user)):
     """Download a specific file from audio_files directory"""
+    if current_user.role != "agent":
+         raise HTTPException(status_code=403, detail="Access denied")
+
     audio_dir = "audio_files"
     file_path = os.path.join(audio_dir, filename)
-
+    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-
-    # Security check
+    
     if not os.path.abspath(file_path).startswith(os.path.abspath(audio_dir)):
         raise HTTPException(status_code=403, detail="Access denied")
-
+    
     return FileResponse(path=file_path, filename=filename)
-
-
-@app.get("/")
-async def root():
-    """API root endpoint"""
-    return {
-        "message": "BankAI WebRTC Server with Supabase",
-        "version": "2.0.0",
-        "services": ["auth", "webrtc", "audio", "database"],
-        "stats": {
-            "connections": len(active_connections),
-            "audio_files": len(audio_storage),
-            "active_streams": len(audio_stream_queues)
-        }
-    }
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "database": "supabase",
-        "auth": "supabase-direct"
-    }
 
 if __name__ == "__main__":
     import uvicorn
