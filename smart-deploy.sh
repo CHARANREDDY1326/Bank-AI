@@ -1,10 +1,16 @@
 #!/bin/bash
-#!/bin/bash
 # smart-deploy.sh - Always uses current IP/DNS, perfect for stop/start instances
+#
+# This script handles dynamic deployment of the Bank-AI application on EC2:
+# - Detects current EC2 public IP/DNS automatically
+# - Creates dynamic .env file with current endpoint
+# - Sets up firewall rules
+# - Deploys Docker containers with current configuration
+# - Configures auto-startup on instance reboot
 
 set -e
 
-echo "🚀 Smart deployment - Dynamic IP handling..."
+echo "Smart deployment - Dynamic IP handling..."
 
 # Colors
 GREEN='\033[0;32m'
@@ -26,7 +32,7 @@ info() {
 
 # Detect current endpoints
 detect_endpoints() {
-    log "🔍 Detecting current EC2 endpoints..."
+    log "Detecting current EC2 endpoints..."
     
     # Method 1: EC2 metadata service (most reliable)
     PUBLIC_IP=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
@@ -50,13 +56,13 @@ detect_endpoints() {
     if [ ! -z "$PUBLIC_DNS" ] && [[ "$PUBLIC_DNS" == *"compute.amazonaws.com" ]]; then
         EC2_HOST="$PUBLIC_DNS"
         ENDPOINT_TYPE="DNS"
-        info "✅ Using DNS: $EC2_HOST (more stable)"
+        info "Using DNS: $EC2_HOST (more stable)"
     elif [ ! -z "$PUBLIC_IP" ]; then
         EC2_HOST="$PUBLIC_IP"
         ENDPOINT_TYPE="IP"
-        info "✅ Using IP: $EC2_HOST"
+        info "Using IP: $EC2_HOST"
     else
-        echo "❌ Could not detect any public endpoint!"
+        echo "Could not detect any public endpoint!"
         echo "Please check:"
         echo "1. Are you running this on EC2?"
         echo "2. Is the instance in a public subnet?"
@@ -69,7 +75,7 @@ detect_endpoints() {
 
 # Create dynamic .env file
 create_dynamic_env() {
-    log "📝 Creating .env with current endpoint..."
+    log "Creating .env with current endpoint..."
     
     # Preserve existing SECRET_KEY if it exists
     EXISTING_SECRET=""
@@ -83,7 +89,6 @@ create_dynamic_env() {
     fi
     
     cat > .env << EOF
-# Auto-generated on $(date)
 # This file updates automatically when you redeploy
 
 # Current EC2 Endpoint ($ENDPOINT_TYPE)
@@ -118,7 +123,7 @@ LAST_UPDATED=$(date)
 ENDPOINT_TYPE=$ENDPOINT_TYPE
 EOF
 
-    log "✅ .env file created with endpoint: $EC2_HOST"
+    log ".env file created with endpoint: $EC2_HOST"
 }
 
 # Create auto-startup script
@@ -129,14 +134,14 @@ create_startup_script() {
 #!/bin/bash
 # This script runs automatically when you restart your EC2
 
-echo "🔄 Auto-starting app with current IP..."
+echo "Auto-starting app with current IP..."
 
 cd /home/ubuntu/your-project  # Adjust path as needed
 
 # Re-run smart deployment to get new IP
 ./smart-deploy.sh
 
-echo "✅ App started with current IP!"
+echo "App started with current IP!"
 EOF
 
     chmod +x /home/ubuntu/startup-app.sh
@@ -144,33 +149,33 @@ EOF
     # Add to crontab for auto-start on reboot
     (crontab -l 2>/dev/null | grep -v startup-app.sh; echo "@reboot sleep 60 && /home/ubuntu/startup-app.sh >> /home/ubuntu/startup.log 2>&1") | crontab -
     
-    log "✅ Auto-startup script created"
+    log "Auto-startup script created"
 }
 
 # Check if containers are running
 check_existing_containers() {
     if docker-compose ps | grep -q "Up"; then
-        warn "⚠️  Containers are running with potentially old IP"
-        warn "💡 Stopping and rebuilding with current IP..."
+        warn "Containers are running with potentially old IP"
+        warn "Stopping and rebuilding with current IP..."
         docker-compose down 2>/dev/null || true
     fi
 }
 
 # Setup firewall
 setup_firewall() {
-    log "🔥 Setting up firewall..."
+    log "Setting up firewall..."
     
     sudo ufw allow 22/tcp >/dev/null 2>&1 || true
     sudo ufw allow 80/tcp >/dev/null 2>&1 || true
     sudo ufw allow 10000:20000/udp >/dev/null 2>&1 || true
     sudo ufw --force enable >/dev/null 2>&1 || true
     
-    log "✅ Firewall configured"
+    log "Firewall configured"
 }
 
 # Deploy containers
 deploy_containers() {
-    log "🐳 Deploying containers with current endpoint..."
+    log "Deploying containers with current endpoint..."
     
     # Clean up any old containers
     docker-compose down --remove-orphans 2>/dev/null || true
@@ -179,13 +184,13 @@ deploy_containers() {
     docker image prune -f >/dev/null 2>&1 || true
     
     # Build with current environment
-    log "🔨 Building frontend with API URL: http://$EC2_HOST"
+    log "Building frontend with API URL: http://$EC2_HOST"
     docker-compose build --no-cache
     
     # Start all services
     docker-compose up -d
     
-    log "✅ Containers deployed"
+    log "Containers deployed"
 }
 
 # Wait for services
@@ -198,7 +203,7 @@ wait_for_services() {
     while [ $attempt -lt $max_attempts ]; do
         # Check backend
         if curl -f -s http://localhost:9795/health >/dev/null 2>&1; then
-            log "✅ Backend is ready"
+            log "Backend is ready"
             break
         fi
         
@@ -210,38 +215,38 @@ wait_for_services() {
     done
     
     if [ $attempt -eq $max_attempts ]; then
-        warn "⚠️  Backend health check timeout, but continuing..."
+        warn "Backend health check timeout, but continuing..."
     fi
     
     # Check if nginx is responding
     if curl -f -s http://localhost/ >/dev/null 2>&1; then
-        log "✅ Frontend is ready"
+        log "Frontend is ready"
     else
-        warn "⚠️  Frontend health check failed"
+        warn "Frontend health check failed"
     fi
 }
 
 # Show final information
 show_results() {
     echo ""
-    echo "🎉 Deployment complete!"
+    echo "Deployment complete!"
     echo ""
-    echo -e "${GREEN}📱 Your app is now accessible at:${NC}"
-    echo -e "${BLUE}   🌐 Frontend: http://$EC2_HOST${NC}"
-    echo -e "${BLUE}   🔧 Backend:  http://$EC2_HOST/api/health${NC}"
-    echo -e "${BLUE}   🌍 Direct:   http://$EC2_HOST:9795/health${NC}"
+    echo -e "${GREEN}Your app is now accessible at:${NC}"
+    echo -e "${BLUE}   Frontend: http://$EC2_HOST${NC}"
+    echo -e "${BLUE}   Backend:  http://$EC2_HOST/api/health${NC}"
+    echo -e "${BLUE}   Direct:   http://$EC2_HOST:9795/health${NC}"
     echo ""
-    echo -e "${GREEN}💡 Important Notes:${NC}"
+    echo -e "${GREEN}Important Notes:${NC}"
     echo -e "${YELLOW}   • Your app automatically adapts to IP changes${NC}"
     echo -e "${YELLOW}   • Just run './smart-deploy.sh' after each restart${NC}"
     echo -e "${YELLOW}   • Auto-startup is configured for reboots${NC}"
     echo ""
-    echo -e "${GREEN}🔄 For daily restarts:${NC}"
+    echo -e "${GREEN}For daily restarts:${NC}"
     echo -e "${BLUE}   1. Stop instance in AWS console${NC}"
     echo -e "${BLUE}   2. Start instance (gets new IP)${NC}"
     echo -e "${BLUE}   3. SSH in and run: ./smart-deploy.sh${NC}"
     echo ""
-    echo -e "${GREEN}🛠️  Useful commands:${NC}"
+    echo -e "${GREEN}Useful commands:${NC}"
     echo -e "${BLUE}   docker-compose ps        # Check status${NC}"
     echo -e "${BLUE}   docker-compose logs -f   # View logs${NC}"
     echo -e "${BLUE}   docker-compose restart   # Restart services${NC}"
@@ -250,9 +255,9 @@ show_results() {
 # Check if we're on EC2
 check_environment() {
     if curl -s --max-time 2 http://169.254.169.254/latest/meta-data/ >/dev/null 2>&1; then
-        log "✅ Running on EC2 instance"
+        log "Running on EC2 instance"
     else
-        warn "⚠️  Not running on EC2 - some features may not work"
+        warn "Not running on EC2 - some features may not work"
     fi
 }
 
@@ -261,7 +266,7 @@ main() {
     echo -e "${GREEN}"
     echo "╔════════════════════════════════════════╗"
     echo "║         Smart WebRTC Deployment       ║"
-    echo "║     🔄 Dynamic IP Handling Enabled     ║"
+    echo "║     Dynamic IP Handling Enabled     ║"
     echo "╚════════════════════════════════════════╝"
     echo -e "${NC}"
     

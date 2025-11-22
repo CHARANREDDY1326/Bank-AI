@@ -1,3 +1,13 @@
+/**
+ * CustomerAudioCapture component for streaming customer audio to the server.
+ * 
+ * This component handles:
+ * - Starting and stopping audio streaming sessions
+ * - Capturing audio from the customer's microphone
+ * - Uploading audio chunks to the server for real-time transcription
+ * - Managing streaming state and chunk counting
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 
@@ -32,7 +42,7 @@ const CustomerAudioCapture = ({ isCallActive, sessionId }) => {
     if (!isCustomer()) return;
 
     try {
-      console.log(`🎙️ Starting customer audio streaming for session: ${sessionId}`);
+      console.log(`Starting customer audio streaming for session: ${sessionId}`);
 
       const response = await fetch(`${getApiUrl()}/audio-stream/start/${sessionId}`, {
         method: 'POST',
@@ -77,9 +87,9 @@ const CustomerAudioCapture = ({ isCallActive, sessionId }) => {
 
       }, 1000);
 
-      console.log('✅ Customer audio streaming started');
+      console.log('Customer audio streaming started');
     } catch (error) {
-      console.error('❌ Failed to start audio streaming:', error);
+      console.error('Failed to start audio streaming:', error);
       setIsStreaming(false);
     }
   };
@@ -101,12 +111,12 @@ const CustomerAudioCapture = ({ isCallActive, sessionId }) => {
       if (response.ok) {
         chunkIndexRef.current++;
         setChunkCount((prev) => prev + 1);
-        console.log(`📤 Uploaded chunk ${chunkIndexRef.current - 1} (${audioBlob.size} bytes)`);
+        console.log(`Uploaded chunk ${chunkIndexRef.current - 1} (${audioBlob.size} bytes)`);
       } else {
-        console.error('❌ Failed to upload chunk:', response.statusText);
+        console.error('Failed to upload chunk:', response.statusText);
       }
     } catch (error) {
-      console.error('❌ Chunk upload error:', error);
+      console.error('Chunk upload error:', error);
     }
   };
 

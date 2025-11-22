@@ -1,4 +1,14 @@
-// src/components/auth/AgentLogin.jsx - Updated for Supabase backend
+/**
+ * AgentLogin component for agent authentication (signup and login).
+ * 
+ * This component handles:
+ * - Agent registration and login forms
+ * - Form validation
+ * - Authentication API calls to Supabase backend
+ * - Error message display
+ * - Switching between signup and login modes
+ */
+
 import React, { useState } from "react";
 import { Eye, EyeOff, User, Lock, Shield, AlertCircle, Server, Mail } from "lucide-react";
 import { useAuth } from "./AuthProvider";
@@ -38,7 +48,7 @@ const AgentLogin = ({ onSwitchToCustomer }) => {
       let endpoint, body;
       
       if (isSignup) {
-        console.log('🔐 Agent signup attempt to:', apiUrl);
+        console.log('Agent signup attempt to:', apiUrl);
         endpoint = '/auth/agent/signup';
         body = {
           name: formData.name,
@@ -46,7 +56,7 @@ const AgentLogin = ({ onSwitchToCustomer }) => {
           password: formData.password
         };
       } else {
-        console.log('🔐 Agent login attempt to:', apiUrl);
+        console.log('Agent login attempt to:', apiUrl);
         endpoint = '/auth/login';
         body = {
           email: formData.email,
@@ -65,7 +75,7 @@ const AgentLogin = ({ onSwitchToCustomer }) => {
       const data = await response.json();
 
       if (response.ok) {
-        console.log(isSignup ? '✅ Agent signup successful' : '✅ Agent login successful');
+        console.log(isSignup ? 'Agent signup successful' : 'Agent login successful');
         
         // Check if user is actually an agent (for login)
         if (!isSignup && data.user_info.role !== 'agent') {
@@ -76,11 +86,11 @@ const AgentLogin = ({ onSwitchToCustomer }) => {
         login(data.user_info, data.access_token);
       } else {
         setError(data.detail || (isSignup ? "Signup failed" : "Login failed"));
-        console.error(isSignup ? '❌ Agent signup failed:' : '❌ Agent login failed:', data);
+        console.error(isSignup ? 'Agent signup failed:' : 'Agent login failed:', data);
       }
     } catch (error) {
       setError("Network error. Please check your connection.");
-      console.error("❌ Agent auth network error:", error);
+      console.error("Agent auth network error:", error);
     } finally {
       setLoading(false);
     }

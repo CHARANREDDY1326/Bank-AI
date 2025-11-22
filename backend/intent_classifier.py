@@ -1,8 +1,16 @@
+"""
+Intent classification module using Claude API.
+
+This module classifies customer conversation transcripts into banking-related intents
+and extracts clean queries for further processing. It uses Claude (Anthropic) API
+to analyze transcripts and identify the customer's intent from a predefined list.
+"""
+
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 import os
 from dotenv import load_dotenv
-# Make sure you have ANTHROPIC_API_KEY in your environment
+
 load_dotenv(override=True)
 anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
@@ -67,7 +75,7 @@ Cleaned_Query: None
         response = llm.invoke([HumanMessage(content=prompt)])
         text = response.content.strip()
         
-        print(f"🤖 Claude Response:\n{text}")  # Debug output
+        print(f"Claude Response:\n{text}")
         
         intent = "other"
         cleaned_query = ""
@@ -84,14 +92,14 @@ Cleaned_Query: None
 
         # Validate intent against our list
         if intent not in [i.lower() for i in INTENTS]:
-            print(f"⚠️ Intent '{intent}' not in valid list, defaulting to 'other'")
+            print(f"Intent '{intent}' not in valid list, defaulting to 'other'")
             intent = "other"
             
-        print(f"✅ Classified as: {intent} | Query: {cleaned_query}")
+        print(f"Classified as: {intent} | Query: {cleaned_query}")
         return intent, cleaned_query
         
     except Exception as e:
-        print(f"❌ Error in Claude intent classification: {e}")
+        print(f"Error in Claude intent classification: {e}")
         return "error", str(e)
 
 # Alternative using direct Anthropic API (without LangChain)
@@ -102,7 +110,7 @@ def classify_intent_and_giveQuery_direct(full_transcript: str):
     import anthropic
     
     if not anthropic_api_key:
-        print("❌ ANTHROPIC_API_KEY not found in environment variables")
+        print("ANTHROPIC_API_KEY not found in environment variables")
         return "error", "Missing API key"
     
     try:
@@ -151,7 +159,7 @@ Cleaned_Query: <query_or_None>
         return intent, cleaned_query
         
     except Exception as e:
-        print(f"❌ Error in direct Anthropic API call: {e}")
+        print(f"Error in direct Anthropic API call: {e}")
         return "error", str(e)
 
 # Test function
@@ -165,7 +173,7 @@ def test_classification():
         "I need help with opening a new savings account"
     ]
     
-    print("🧪 Testing Claude Intent Classification...")
+    print("Testing Claude Intent Classification...")
     for i, test_transcript in enumerate(test_cases, 1):
         print(f"\n--- Test {i} ---")
         print(f"Input: {test_transcript}")

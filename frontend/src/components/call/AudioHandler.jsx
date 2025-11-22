@@ -1,4 +1,15 @@
-// src/components/AudioHandler.jsx
+/**
+ * AudioHandler component for managing WebRTC audio connections and recording.
+ * 
+ * This component handles:
+ * - WebRTC peer connection setup and management
+ * - Audio stream recording and playback
+ * - Connection state monitoring
+ * - Audio chunk recording and download functionality
+ * 
+ * Supports both agent and customer roles with different connection initiation logic.
+ */
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useAuthenticatedWebRTC from '../../hooks/useAuthenticatedWebRTC';
 import CustomerAudioCapture from './CustomerAudioCapture';
@@ -53,7 +64,7 @@ const AudioHandler = ({ role }) => {
 
  // Initialization effect from old code
  useEffect(() => {
-   console.log('🎯 AudioHandler starting for role:', role, 'isInitiator:', isInitiator, 'sessionId:', sessionId);
+   console.log('AudioHandler starting for role:', role, 'isInitiator:', isInitiator, 'sessionId:', sessionId);
    mountedRef.current = true;
    
    const initializeConnection = async () => {
@@ -65,7 +76,7 @@ const AudioHandler = ({ role }) => {
        // Start monitoring for remote stream (from old code)
        startRemoteStreamMonitoring();
      } catch (error) {
-       console.error('❌ Failed to setup media:', error);
+       console.error('Failed to setup media:', error);
        updateStatus(`Failed to setup: ${error.message}`);
      }
    };
@@ -90,15 +101,15 @@ const AudioHandler = ({ role }) => {
  useEffect(() => {
    switch (connectionState) {
      case 'connecting':
-       updateStatus('🔌 Connecting to signaling server...');
+       updateStatus('Connecting to signaling server...');
        updateConnectionStatus('connecting');
        break;
      case 'connected':
-       updateStatus('✅ Connected to signaling server');
+       updateStatus('Connected to signaling server');
        updateConnectionStatus('connecting');
        break;
      case 'peer-connected':
-       updateStatus('🎉 Connected to peer - Audio ready!');
+       updateStatus('Connected to peer - Audio ready!');
        updateConnectionStatus('connected');
        // Auto-start recording for agents (from old code logic)
        if (role === 'agent') {
@@ -106,16 +117,16 @@ const AudioHandler = ({ role }) => {
        }
        break;
      case 'failed':
-       updateStatus(`❌ Connection failed: ${webrtcError || 'Unknown error'}`);
+       updateStatus(`Connection failed: ${webrtcError || 'Unknown error'}`);
        updateConnectionStatus('failed');
        break;
      case 'disconnected':
-       updateStatus('🔌 Disconnected');
+       updateStatus('Disconnected');
        updateConnectionStatus('disconnected');
        break;
      default:
        if (webrtcError) {
-         updateStatus(`❌ Error: ${webrtcError}`);
+         updateStatus(`Error: ${webrtcError}`);
          updateConnectionStatus('failed');
        }
    }
@@ -141,7 +152,7 @@ const AudioHandler = ({ role }) => {
      const remoteStream = remoteStreamRef.current;
      
      if (attempts % 5 === 0) { // Log every 5 attempts to reduce spam (from old code)
-       console.log(`🔍 Monitor attempt ${attempts}/${maxAttempts}`);
+       console.log(`Monitor attempt ${attempts}/${maxAttempts}`);
      }
      
      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
@@ -149,7 +160,7 @@ const AudioHandler = ({ role }) => {
        const activeTracks = audioTracks.filter(track => track.readyState === 'live' && track.enabled);
        
        if (attempts % 10 === 0) { // Detailed logging every 10 attempts (from old code)
-         console.log('📊 Remote stream check:', {
+         console.log('Remote stream check:', {
            totalTracks: audioTracks.length,
            activeTracks: activeTracks.length,
            trackDetails: audioTracks.map(t => ({
@@ -162,7 +173,7 @@ const AudioHandler = ({ role }) => {
        }
 
        if (activeTracks.length > 0) {
-         console.log('✅ Remote audio stream is ready!');
+         console.log('Remote audio stream is ready!');
          clearInterval(checkIntervalRef.current);
          updateConnectionStatus('connected');
          updateStatus('Connected - Remote audio ready');
@@ -192,19 +203,19 @@ const AudioHandler = ({ role }) => {
  const startRecording = useCallback((streamToRecord = null) => {
    // Prevent multiple simultaneous calls (from old code)
    if (recordingStateRef.current) {
-     console.log('⚠️ Already recording');
+     console.log('Already recording');
      return;
    }
 
    const targetStream = streamToRecord || remoteStreamRef.current;
    if (!targetStream || targetStream.getAudioTracks().length === 0) {
-     console.error('❌ No audio stream available for recording');
+     console.error('No audio stream available for recording');
      updateStatus('No audio stream available');
      return;
    }
 
    try {
-     console.log('🎙️ Starting recording of remote stream');
+     console.log('Starting recording of remote stream');
 
      // Clear any previous recording data (from old code)
      chunksRef.current = [];
@@ -236,7 +247,7 @@ const AudioHandler = ({ role }) => {
      };
 
      recorder.onstop = () => {
-       console.log('🛑 Recording stopped. Total chunks:', chunksRef.current.length);
+       console.log('Recording stopped. Total chunks:', chunksRef.current.length);
        updateIsRecording(false);
        
        if (chunksRef.current.length > 0) {
@@ -250,13 +261,13 @@ const AudioHandler = ({ role }) => {
      };
 
      recorder.onerror = (event) => {
-       console.error('❌ MediaRecorder error:', event.error);
+       console.error('MediaRecorder error:', event.error);
        updateStatus(`Recording error: ${event.error?.message || 'Unknown error'}`);
        updateIsRecording(false);
      };
 
      recorder.onstart = () => {
-       console.log('✅ Recording started successfully');
+       console.log('Recording started successfully');
        updateIsRecording(true);
        updateStatus('🔴 Recording remote audio...');
      };
@@ -273,7 +284,7 @@ const AudioHandler = ({ role }) => {
      }, 60000);
 
    } catch (error) {
-     console.error('❌ Error starting recording:', error);
+     console.error('Error starting recording:', error);
      updateStatus(`Failed to start recording: ${error.message}`);
    }
  }, [remoteStreamRef, updateStatus, updateIsRecording]);
@@ -285,7 +296,7 @@ const AudioHandler = ({ role }) => {
    }
 
    if (recorderRef.current && recorderRef.current.state === 'recording') {
-     console.log('🛑 Manually stopping recording');
+     console.log('Manually stopping recording');
      recorderRef.current.stop();
    }
  }, []);
@@ -293,7 +304,7 @@ const AudioHandler = ({ role }) => {
  // Download handler from old code - EXACT same implementation
  const handleDownload = useCallback(() => {
    if (chunksRef.current.length === 0) {
-     console.log('⚠️ No audio data to download');
+     console.log('No audio data to download');
      updateStatus('No audio data available');
      return;
    }
@@ -328,10 +339,10 @@ const AudioHandler = ({ role }) => {
      document.body.removeChild(a);
      URL.revokeObjectURL(url);
      
-     console.log('💾 Download initiated:', filename);
+     console.log('Download initiated:', filename);
      updateStatus(`Downloaded: ${filename}`);
    } catch (error) {
-     console.error('❌ Download error:', error);
+      console.error('Download error:', error);
      updateStatus(`Download failed: ${error.message}`);
    }
  }, [role, updateStatus]);

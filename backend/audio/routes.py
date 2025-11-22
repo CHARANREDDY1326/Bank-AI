@@ -1,3 +1,14 @@
+"""
+Audio routes for file upload and download operations.
+
+This module provides API endpoints for:
+- Uploading audio files
+- Downloading audio files
+- Listing audio files (with role-based access control)
+
+Supports both agent and customer roles with appropriate access restrictions.
+"""
+
 import os
 import logging
 from datetime import datetime

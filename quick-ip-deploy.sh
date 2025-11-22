@@ -1,9 +1,15 @@
 #!/bin/bash
 # quick-ip-update.sh - Fast IP update without full rebuild
+#
+# This script quickly updates the IP/DNS configuration without rebuilding containers:
+# - Detects current EC2 endpoint
+# - Updates .env file with new endpoint
+# - Restarts containers with new configuration
+# - Verifies services are responding
 
 set -e
 
-echo "⚡ Quick IP update..."
+echo "Quick IP update..."
 
 # Colors
 GREEN='\033[0;32m'
@@ -21,7 +27,7 @@ warn() {
 
 # Get current IP/DNS
 detect_current_endpoint() {
-    log "🔍 Detecting current endpoint..."
+    log "Detecting current endpoint..."
     
     PUBLIC_IP=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
     PUBLIC_DNS=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-hostname 2>/dev/null || echo "")
@@ -30,14 +36,14 @@ detect_current_endpoint() {
     if [ ! -z "$PUBLIC_DNS" ] && [[ "$PUBLIC_DNS" == *"compute.amazonaws.com" ]]; then
         NEW_HOST="$PUBLIC_DNS"
         ENDPOINT_TYPE="DNS"
-        log "🌐 Using DNS: $NEW_HOST"
+        log "Using DNS: $NEW_HOST"
     elif [ ! -z "$PUBLIC_IP" ]; then
         NEW_HOST="$PUBLIC_IP"
         ENDPOINT_TYPE="IP"
-        log "📍 Using IP: $NEW_HOST"
+        log "Using IP: $NEW_HOST"
     else
-        echo "❌ Could not detect current endpoint!"
-        echo "💡 Try running: ./smart-deploy.sh for full detection"
+        echo "Could not detect current endpoint!"
+        echo "Try running: ./smart-deploy.sh for full detection"
         exit 1
     fi
 }
@@ -46,8 +52,8 @@ detect_current_endpoint() {
 check_if_update_needed() {
     # Check if .env exists
     if [ ! -f ".env" ]; then
-        warn "❌ .env file not found!"
-        echo "💡 Run full deployment first: ./smart-deploy.sh"
+        warn ".env file not found!"
+        echo "Run full deployment first: ./smart-deploy.sh"
         exit 1
     fi
 
@@ -55,24 +61,24 @@ check_if_update_needed() {
     OLD_HOST=$(grep "EC2_HOST=" .env | cut -d'=' -f2 2>/dev/null || echo "")
 
     if [ -z "$OLD_HOST" ]; then
-        warn "❌ No EC2_HOST found in .env file!"
-        echo "💡 Run full deployment: ./smart-deploy.sh"
+        warn "No EC2_HOST found in .env file!"
+        echo "Run full deployment: ./smart-deploy.sh"
         exit 1
     fi
 
     if [ "$OLD_HOST" == "$NEW_HOST" ]; then
-        log "✅ IP unchanged ($NEW_HOST) - no update needed"
-        echo "🎯 Your app is already configured correctly!"
-        echo "📱 Access at: http://$NEW_HOST"
+        log "IP unchanged ($NEW_HOST) - no update needed"
+        echo "Your app is already configured correctly!"
+        echo "Access at: http://$NEW_HOST"
         exit 0
     fi
 
-    log "🔄 IP changed: $OLD_HOST → $NEW_HOST"
+    log "IP changed: $OLD_HOST → $NEW_HOST"
 }
 
 # Update .env file with new endpoint
 update_env_file() {
-    log "📝 Updating .env file..."
+    log "Updating .env file..."
     
     # Update the endpoint
     sed -i "s|EC2_HOST=.*|EC2_HOST=$NEW_HOST|g" .env
@@ -80,25 +86,25 @@ update_env_file() {
     sed -i "s|LAST_UPDATED=.*|LAST_UPDATED=$(date)|g" .env
     sed -i "s|ENDPOINT_TYPE=.*|ENDPOINT_TYPE=$ENDPOINT_TYPE|g" .env
 
-    log "✅ .env file updated with new endpoint"
+    log ".env file updated with new endpoint"
 }
 
 # Restart containers with new configuration
 restart_containers() {
     # Check if containers are running
     if ! docker-compose ps | grep -q "Up"; then
-        warn "⚠️  No containers are running"
-        echo "💡 Start containers with: docker-compose up -d"
-        echo "💡 Or run full deployment: ./smart-deploy.sh"
+        warn "No containers are running"
+        echo "Start containers with: docker-compose up -d"
+        echo "Or run full deployment: ./smart-deploy.sh"
         return
     fi
 
-    log "🔄 Restarting containers with new IP..."
+    log "Restarting containers with new IP..."
     
     # Quick restart (no rebuild)
     docker-compose restart
     
-    log "✅ Containers restarted"
+    log "Containers restarted"
 }
 
 # Wait for services to respond
@@ -110,7 +116,7 @@ wait_for_services() {
     
     while [ $attempt -lt $max_attempts ]; do
         if curl -f -s http://localhost/ >/dev/null 2>&1; then
-            log "✅ Frontend is responding"
+            log "Frontend is responding"
             break
         fi
         
@@ -122,27 +128,27 @@ wait_for_services() {
     done
     
     if [ $attempt -eq $max_attempts ]; then
-        warn "⚠️  Frontend not responding quickly"
-        echo "💡 Try: docker-compose logs frontend"
-        echo "💡 Or run full rebuild: ./smart-deploy.sh"
+        warn "Frontend not responding quickly"
+        echo "Try: docker-compose logs frontend"
+        echo "Or run full rebuild: ./smart-deploy.sh"
     fi
     
     # Quick backend check
     if curl -f -s http://localhost:9795/health >/dev/null 2>&1; then
-        log "✅ Backend is healthy"
+        log "Backend is healthy"
     else
-        warn "⚠️  Backend health check failed"
-        echo "💡 Try: docker-compose logs backend"
+        warn "Backend health check failed"
+        echo "Try: docker-compose logs backend"
     fi
 }
 
 # Show results
 show_results() {
     echo ""
-    echo "🎉 Quick IP update complete!"
+    echo "Quick IP update complete!"
     echo ""
-    echo -e "${GREEN}📱 Your app is now accessible at:${NC}"
-    echo -e "${BLUE}   🌐 Frontend: http://$NEW_HOST${NC}"
+    echo -e "${GREEN}Your app is now accessible at:${NC}"
+    echo -e "${BLUE}   Frontend: http://$NEW_HOST${NC}"
     echo -e "${BLUE}   🔧 Backend:  http://$NEW_HOST/api/health${NC}"
     echo -e "${BLUE}   📊 Status:   docker-compose ps${NC}"
     echo ""

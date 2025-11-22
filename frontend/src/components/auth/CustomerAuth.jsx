@@ -1,4 +1,14 @@
-// src/components/auth/CustomerAuth.jsx - Updated for Supabase backend
+/**
+ * CustomerAuth component for customer authentication (signup and login).
+ * 
+ * This component handles:
+ * - Customer registration and login forms
+ * - Form validation (email format, password length)
+ * - Authentication API calls to Supabase backend
+ * - Error and success message display
+ * - Switching between signup and login modes
+ */
+
 import React, { useState } from 'react';
 import { Mail, User, Eye, EyeOff, Lock, CheckCircle, AlertCircle, Server, Phone } from 'lucide-react';
 import { useAuth } from './AuthProvider';
@@ -50,7 +60,7 @@ const CustomerAuth = ({ onSwitchToAgent }) => {
       let endpoint, body;
       
       if (isSignup) {
-        console.log('🚀 Customer signup attempt to:', apiUrl);
+        console.log('Customer signup attempt to:', apiUrl);
         endpoint = '/auth/customer/signup';
         body = {
           name: formData.name.trim(),
@@ -75,10 +85,10 @@ const CustomerAuth = ({ onSwitchToAgent }) => {
       });
 
       const data = await response.json();
-      console.log('📥 Customer auth response:', response.status, data);
+      console.log('Customer auth response:', response.status, data);
 
       if (response.ok) {
-        console.log(isSignup ? '✅ Customer signup successful' : '✅ Customer login successful');
+        console.log(isSignup ? 'Customer signup successful' : 'Customer login successful');
         
         // Check if user is actually a customer (for login)
         if (!isSignup && data.user_info.role !== 'customer') {
@@ -93,11 +103,11 @@ const CustomerAuth = ({ onSwitchToAgent }) => {
         login(data.user_info, data.access_token);
       } else {
         setError(data.detail || (isSignup ? 'Signup failed' : 'Login failed'));
-        console.error(isSignup ? '❌ Customer signup failed:' : '❌ Customer login failed:', data);
+        console.error(isSignup ? 'Customer signup failed:' : 'Customer login failed:', data);
       }
     } catch (error) {
       setError('Network error. Please check your connection.');
-      console.error('❌ Customer auth network error:', error);
+      console.error('Customer auth network error:', error);
     } finally {
       setLoading(false);
     }

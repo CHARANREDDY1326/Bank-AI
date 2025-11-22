@@ -1,3 +1,17 @@
+"""
+Main FastAPI application for Bank-AI WebRTC server.
+
+This module provides the main API endpoints for:
+- WebRTC signaling via WebSocket
+- Real-time AI suggestions broadcasting
+- Audio file upload and download
+- Live audio streaming with transcription
+- Session management and audio file storage
+
+The server handles authentication via Supabase and manages WebRTC connections
+between agents and customers for real-time audio communication.
+"""
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -9,7 +23,6 @@ from typing import Dict, List
 import uuid
 from datetime import datetime
 
-# --- Imports from your Production Version (Version 2) ---
 from auth.routes import router as auth_router, get_current_user
 from auth.models import User
 from supabase_service import supabase_service
@@ -74,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
         "connected_at": datetime.utcnow()
     }
 
-    logger.info(f"✅ WebSocket connected: {username} ({role})")
+    logger.info(f"WebSocket connected: {username} ({role})")
 
     try:
         while True:
@@ -87,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
             }
             await forward_message(websocket, message)
     except WebSocketDisconnect:
-        logger.info(f"❌ WebSocket disconnected: {username}")
+        logger.info(f"WebSocket disconnected: {username}")
     finally:
         active_connections.pop(websocket, None)
 
@@ -114,7 +127,7 @@ async def forward_message(sender_ws: WebSocket, message: Dict):
                 pass
 
 # ==========================================
-#  2. SUGGESTION WEBSOCKET (AI Logic - From V1)
+#  2. SUGGESTION WEBSOCKET
 # ==========================================
 @app.websocket("/ws/suggestions")
 async def suggestions_websocket(websocket: WebSocket):
@@ -123,7 +136,7 @@ async def suggestions_websocket(websocket: WebSocket):
     suggestion_connections.append(websocket)
     
     try:
-        logger.info(f"✅ Suggestions WebSocket connected. Total active: {len(suggestion_connections)}")
+        logger.info(f"Suggestions WebSocket connected. Total active: {len(suggestion_connections)}")
         
         # Keep connection alive by waiting for disconnect
         try:
@@ -132,18 +145,18 @@ async def suggestions_websocket(websocket: WebSocket):
             pass  # Normal disconnect
             
     except Exception as e:
-        logger.error(f"❌ Suggestions WebSocket error: {e}")
+        logger.error(f"Suggestions WebSocket error: {e}")
     finally:
         if websocket in suggestion_connections:
             suggestion_connections.remove(websocket)
-        logger.info(f"❌ Suggestions WebSocket disconnected. Total active: {len(suggestion_connections)}")
+        logger.info(f"Suggestions WebSocket disconnected. Total active: {len(suggestion_connections)}")
 
 async def broadcast_suggestion(suggestion: str):
     """Broadcast suggestion to all connected agents"""
-    logger.info(f"🔍 [broadcast_suggestion] Attempting to broadcast to {len(suggestion_connections)} connections")
+    logger.info(f"[broadcast_suggestion] Attempting to broadcast to {len(suggestion_connections)} connections")
     
     if not suggestion_connections:
-        logger.warning("⚠️ [broadcast_suggestion] No suggestion connections available")
+        logger.warning("[broadcast_suggestion] No suggestion connections available")
         return
     
     message = json.dumps({"suggestion": suggestion})
@@ -152,9 +165,9 @@ async def broadcast_suggestion(suggestion: str):
     for i, websocket in enumerate(suggestion_connections):
         try:
             await websocket.send_text(message)
-            logger.info(f"✅ [broadcast_suggestion] Successfully sent to connection {i}")
+            logger.info(f"[broadcast_suggestion] Successfully sent to connection {i}")
         except Exception as e:
-            logger.error(f"❌ [broadcast_suggestion] Failed to send: {e}")
+            logger.error(f"[broadcast_suggestion] Failed to send: {e}")
             disconnected.append(websocket)
     
     for websocket in disconnected:
@@ -191,7 +204,7 @@ async def upload_audio(
         "uploaded_at": datetime.utcnow()
     }
 
-    logger.info(f"✅ Audio saved: {file_path} ({len(audio_data)} bytes) by {current_user.email}")
+    logger.info(f"Audio saved: {file_path} ({len(audio_data)} bytes) by {current_user.email}")
 
     return {
         "audio_id": audio_id,
@@ -218,7 +231,7 @@ async def download_audio(audio_id: str, current_user: User = Depends(get_current
     return FileResponse(path=file_path, filename=f"audio_{audio_id}.webm")
 
 # ==========================================
-#  4. LIVE AUDIO STREAMING (AI Integration)
+#  4. LIVE AUDIO STREAMING
 # ==========================================
 @app.post("/audio-stream/start/{session_id}")
 async def start_audio_session(
@@ -242,7 +255,7 @@ async def start_audio_session(
 
     audio_chunks[session_id] = []
 
-    logger.info(f"🎙️ Audio session started: {session_id} by {current_user.email}")
+    logger.info(f"Audio session started: {session_id} by {current_user.email}")
 
     return {
         "session_id": session_id,
@@ -281,7 +294,7 @@ async def upload_audio_chunk(
         "customer_id": current_user.customer_id
     })
 
-    logger.info(f"📤 Audio chunk {chunk_index} uploaded for session {session_id}: {len(chunk_data)} bytes")
+    logger.info(f"Audio chunk {chunk_index} uploaded for session {session_id}: {len(chunk_data)} bytes")
 
     return {
         "chunk_index": chunk_index,
@@ -301,7 +314,7 @@ async def end_audio_session(
     # Clean up queues
     del audio_stream_queues[session_id]
 
-    logger.info(f"🎙️ Audio session ended: {session_id} by {current_user.email}")
+    logger.info(f"Audio session ended: {session_id} by {current_user.email}")
 
     return {"session_id": session_id, "status": "completed"}
 
@@ -387,7 +400,7 @@ async def save_session_to_local(
         f.write(combined_data)
 
     file_size = os.path.getsize(file_path)
-    logger.info(f"💾 Audio session saved: {file_path} ({file_size} bytes)")
+    logger.info(f"Audio session saved: {file_path} ({file_size} bytes)")
 
     return {
         "session_id": session_id,

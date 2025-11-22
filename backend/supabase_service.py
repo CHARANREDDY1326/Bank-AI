@@ -1,3 +1,15 @@
+"""
+Supabase service for user authentication and management.
+
+This module provides:
+- User registration and authentication
+- Password hashing and verification
+- JWT token creation and verification
+- User data retrieval from Supabase database
+
+Handles all database operations for user management using Supabase as the backend.
+"""
+
 import os
 import logging
 from typing import Optional, Dict, Any
@@ -7,9 +19,8 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import jwt
-from auth.models import User  # Import from your auth/models.py
+from auth.models import User
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
